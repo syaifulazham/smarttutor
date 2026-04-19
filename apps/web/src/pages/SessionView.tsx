@@ -1,0 +1,580 @@
+import { useState, useRef, useEffect } from 'react';
+import type React from 'react';
+import type { Components } from 'react-markdown';
+import { useSpeech } from '@/hooks/useSpeech';
+import type { SpeechLang } from '@/hooks/useSpeech';
+import { useParams } from 'react-router-dom';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import ReactMarkdown from 'react-markdown';
+import remarkMath from 'remark-math';
+import remarkGfm from 'remark-gfm';
+import rehypeKatex from 'rehype-katex';
+import 'katex/dist/katex.min.css';
+import { useNavigate } from 'react-router-dom';
+import { getSession, completeSession, deleteSession } from '@/services/api';
+import { useAuthStore } from '@/store/authStore';
+import QuestionRenderer from '@/components/question/QuestionRenderer';
+import { useLanguageStore } from '@/store/languageStore';
+import type { ParsedContent, OptionsComponent } from '../../../../packages/shared/types/question';
+
+const EXPLAIN_LABELS: Record<string, { label: string; message: string }> = {
+  en: { label: 'Explain',    message: 'Please explain this question step by step.' },
+  ms: { label: 'Terangkan', message: 'Sila terangkan soalan ini langkah demi langkah.' },
+  zh: { label: '解释题目',   message: '请逐步解释这道题。' },
+};
+
+interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: string;
+}
+
+// Alternating step colors
+const STEP_STYLES = [
+  { bg: 'bg-slate-50',   border: 'border-slate-200',   badge: 'bg-slate-200 text-slate-700' },
+  { bg: 'bg-blue-50',    border: 'border-blue-200',    badge: 'bg-blue-200 text-blue-800' },
+  { bg: 'bg-violet-50',  border: 'border-violet-200',  badge: 'bg-violet-200 text-violet-800' },
+  { bg: 'bg-emerald-50', border: 'border-emerald-200', badge: 'bg-emerald-200 text-emerald-800' },
+  { bg: 'bg-amber-50',   border: 'border-amber-200',   badge: 'bg-amber-200 text-amber-800' },
+];
+
+// Split AI response into logical steps on numbered bold headers, ### headings, or paragraph pairs
+function splitIntoParts(content: string): string[] {
+  // Try split on **N. heading lines
+  const byNumbered = content.split(/(?=\n\*\*\d+[\.\)])/).map(s => s.trim()).filter(Boolean);
+  if (byNumbered.length > 1) return byNumbered;
+
+  // Try split on markdown headings
+  const byHeading = content.split(/(?=\n#{2,3}\s)/).map(s => s.trim()).filter(Boolean);
+  if (byHeading.length > 1) return byHeading;
+
+  // Fallback: group paragraphs in pairs
+  const paras = content.split(/\n\n+/).map(s => s.trim()).filter(Boolean);
+  if (paras.length <= 2) return [content];
+  const chunks: string[] = [];
+  for (let i = 0; i < paras.length; i += 2) {
+    chunks.push(paras.slice(i, i + 2).join('\n\n'));
+  }
+  return chunks;
+}
+
+// Custom markdown components — highlights **bold** in amber, colors inline code
+const mdComponents: Partial<Components> = {
+  strong: ({ children }: { children?: React.ReactNode }) => (
+    <strong className="font-semibold text-amber-700 bg-amber-50 px-0.5 rounded">
+      {children}
+    </strong>
+  ),
+  code: ({ children, className }: { children?: React.ReactNode; className?: string }) => {
+    const isBlock = !!className;
+    return isBlock ? (
+      <code className={`${className} block bg-gray-800 text-green-300 rounded p-2 text-xs overflow-x-auto`}>
+        {children}
+      </code>
+    ) : (
+      <code className="text-primary-700 bg-primary-50 px-1 rounded text-xs">{children}</code>
+    );
+  },
+  em: ({ children }: { children?: React.ReactNode }) => (
+    <em className="not-italic text-blue-700 font-medium">{children}</em>
+  ),
+  table: ({ children }: { children?: React.ReactNode }) => (
+    <div className="overflow-x-auto my-2">
+      <table className="min-w-full border border-gray-300 text-sm">{children}</table>
+    </div>
+  ),
+  thead: ({ children }: { children?: React.ReactNode }) => (
+    <thead className="bg-gray-200 text-gray-700">{children}</thead>
+  ),
+  tbody: ({ children }: { children?: React.ReactNode }) => (
+    <tbody>{children}</tbody>
+  ),
+  tr: ({ children }: { children?: React.ReactNode }) => (
+    <tr className="even:bg-gray-50 border-b border-gray-200">{children}</tr>
+  ),
+  th: ({ children }: { children?: React.ReactNode }) => (
+    <th className="px-3 py-2 text-left font-semibold border-r border-gray-300 last:border-r-0 whitespace-nowrap">{children}</th>
+  ),
+  td: ({ children }: { children?: React.ReactNode }) => (
+    <td className="px-3 py-2 border-r border-gray-200 last:border-r-0">{children}</td>
+  ),
+};
+
+
+// Find the full option text matching the letter
+function findOption(parsedContent: ParsedContent | undefined, letter: string): string | null {
+  if (!parsedContent) return null;
+  const optComp = parsedContent.components.find(
+    (c): c is OptionsComponent => c.type === 'options'
+  );
+  if (!optComp) return null;
+  return optComp.items.find((item) => item.trim().toUpperCase().startsWith(letter)) ?? null;
+}
+
+function MarkdownStep({ content }: { content: string }) {
+  return (
+    <div className="prose prose-sm max-w-none
+      prose-headings:text-gray-900 prose-headings:font-semibold prose-headings:mt-2 prose-headings:mb-1
+      prose-p:my-1.5 prose-p:leading-relaxed prose-p:text-gray-800
+      prose-ul:my-1 prose-ul:pl-4 prose-ol:my-1 prose-ol:pl-4 prose-li:my-0.5
+      prose-blockquote:border-l-2 prose-blockquote:border-primary-400 prose-blockquote:pl-3 prose-blockquote:text-gray-600">
+      <ReactMarkdown
+        remarkPlugins={[remarkMath, remarkGfm]}
+        rehypePlugins={[rehypeKatex]}
+        components={mdComponents}
+      >
+        {content}
+      </ReactMarkdown>
+    </div>
+  );
+}
+
+interface SteppedMessageProps {
+  content: string;
+  messageIndex: number;
+  speech: ReturnType<typeof useSpeech>;
+  language: SpeechLang;
+  parsedContent?: ParsedContent;
+  sessionId: string;
+  isLastMessage: boolean;
+  onAnswerRevealed?: (letter: string | null) => void;
+}
+
+const SHOW_ANSWER_LABEL: Record<string, string> = {
+  en: 'Show Answer', ms: 'Tunjuk Jawapan', zh: '显示答案',
+};
+
+// Paginated assistant message — shows one step at a time with Next + Voice + Show Answer
+function SteppedMessage({ content, messageIndex, speech, language, parsedContent, sessionId, isLastMessage, onAnswerRevealed }: SteppedMessageProps) {
+  const parts = splitIntoParts(content);
+  const [revealed, setRevealed] = useState(1);
+  const [showAnswer, setShowAnswer] = useState(false);
+  const [resolvedLetter, setResolvedLetter] = useState<string | null>(null);
+  const [schemeText, setSchemeText] = useState('');
+  const [schemeFetching, setSchemeFetching] = useState(false);
+
+  const hasMore = revealed < parts.length;
+  const allRevealed = !hasMore;
+
+  const isObjective = parsedContent?.components.some(c => c.type === 'options') ?? false;
+  const correctOption = resolvedLetter ? findOption(parsedContent, resolvedLetter) : null;
+
+  async function handleShowAnswer() {
+    setShowAnswer(true);
+    const token = useAuthStore.getState().token;
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
+
+    if (isObjective) {
+      // Ask AI for the definitive correct letter
+      const res = await fetch(`/api/sessions/${sessionId}/answer`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({}),
+      });
+      const { letter } = await res.json();
+      setResolvedLetter(letter ?? null);
+      onAnswerRevealed?.(letter ?? null);
+    } else {
+      setSchemeFetching(true);
+      setSchemeText('');
+      const res = await fetch(`/api/sessions/${sessionId}/scheme`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ language }),
+      });
+      const reader = res.body?.getReader();
+      const decoder = new TextDecoder();
+      let full = '';
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const lines = decoder.decode(value).split('\n').filter(l => l.startsWith('data: '));
+          for (const line of lines) {
+            const json = JSON.parse(line.slice(6));
+            if (json.chunk) { full += json.chunk; setSchemeText(full); }
+          }
+        }
+      }
+      setSchemeFetching(false);
+      onAnswerRevealed?.(null);
+    }
+  }
+
+  return (
+    <div className="w-full space-y-2">
+      {parts.slice(0, revealed).map((part, pi) => {
+        const style = STEP_STYLES[pi % STEP_STYLES.length];
+        const isNew = pi === revealed - 1;
+        const stepId = `msg-${messageIndex}-step-${pi}`;
+        const isPlaying = speech.activeId === stepId;
+
+        return (
+          <div
+            key={pi}
+            className={`rounded-xl border px-4 py-3 ${style.bg} ${style.border} ${
+              isNew ? 'animate-slide-down' : ''
+            }`}
+          >
+            <div className="flex items-center justify-between mb-2">
+              {parts.length > 1 ? (
+                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${style.badge}`}>
+                  Step {pi + 1} of {parts.length}
+                </span>
+              ) : (
+                <span />
+              )}
+              {speech.supported && (
+                <button
+                  onClick={() => speech.speak(part, language, stepId)}
+                  title={isPlaying ? 'Stop' : 'Listen'}
+                  className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium border transition-all ${
+                    isPlaying
+                      ? 'bg-red-50 border-red-300 text-red-600 hover:bg-red-100'
+                      : 'bg-white border-gray-300 text-gray-500 hover:border-primary-400 hover:text-primary-600 hover:bg-primary-50'
+                  }`}
+                >
+                  {isPlaying ? (
+                    <>
+                      <span className="relative flex h-2 w-2">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500" />
+                      </span>
+                      Stop
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217zM14.657 2.929a1 1 0 011.414 0A9.972 9.972 0 0119 10a9.972 9.972 0 01-2.929 7.071 1 1 0 01-1.414-1.414A7.971 7.971 0 0017 10c0-2.21-.894-4.208-2.343-5.657a1 1 0 010-1.414zm-2.829 2.828a1 1 0 011.415 0A5.983 5.983 0 0115 10a5.984 5.984 0 01-1.757 4.243 1 1 0 01-1.415-1.415A3.984 3.984 0 0013 10a3.983 3.983 0 00-1.172-2.828 1 1 0 010-1.415z" clipRule="evenodd" />
+                      </svg>
+                      Listen
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
+            <MarkdownStep content={part} />
+          </div>
+        );
+      })}
+
+      {hasMore && (
+        <button
+          onClick={() => setRevealed((r) => r + 1)}
+          className="animate-fade-up flex items-center gap-1.5 text-sm font-medium text-primary-600 hover:text-primary-800 px-3 py-1.5 rounded-lg border border-primary-200 bg-primary-50 hover:bg-primary-100 transition-colors"
+        >
+          Next →
+          <span className="text-xs text-primary-400">({parts.length - revealed} more)</span>
+        </button>
+      )}
+
+      {/* Show Answer button — appears once all steps revealed, only on the last message */}
+      {allRevealed && isLastMessage && !showAnswer && (
+        <button
+          onClick={handleShowAnswer}
+          className="animate-fade-up flex items-center gap-2 px-4 py-2 rounded-lg border-2 border-indigo-300 bg-indigo-50 text-indigo-700 text-sm font-semibold hover:bg-indigo-100 hover:border-indigo-400 transition-colors"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+          </svg>
+          {SHOW_ANSWER_LABEL[language] ?? 'Show Answer'}
+        </button>
+      )}
+
+      {/* Objective: correct answer highlight */}
+      {showAnswer && isObjective && (
+        <div className="animate-slide-down rounded-xl border-2 border-green-400 bg-green-50 px-4 py-3">
+          <p className="text-xs font-bold text-green-600 uppercase tracking-wide mb-1.5 flex items-center gap-1.5">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            Correct Answer
+          </p>
+          {resolvedLetter ? (
+            <div className="flex items-start gap-3">
+              <span className="flex-shrink-0 w-8 h-8 rounded-full bg-green-500 text-white font-bold text-base flex items-center justify-center shadow">
+                {resolvedLetter}
+              </span>
+              {correctOption ? (
+                <p className="text-green-900 font-medium text-sm pt-1">
+                  {correctOption.replace(/^[A-D][\.\)]\s*/i, '')}
+                </p>
+              ) : (
+                <p className="text-green-900 font-medium text-sm pt-1">Option {resolvedLetter}</p>
+              )}
+            </div>
+          ) : (
+            <span className="text-green-600 text-sm animate-pulse">Looking up answer…</span>
+          )}
+        </div>
+      )}
+
+      {/* Subjective: scheme answer card */}
+      {showAnswer && !isObjective && (
+        <div className="animate-slide-down rounded-xl border-2 border-indigo-300 bg-indigo-50 px-4 py-3">
+          <p className="text-xs font-bold text-indigo-600 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            Marking Scheme / Model Answer
+          </p>
+          {schemeFetching && !schemeText ? (
+            <span className="text-indigo-400 text-sm">Generating scheme<span className="animate-pulse">…</span></span>
+          ) : (
+            <div className="prose prose-sm max-w-none prose-p:my-1 prose-li:my-0.5 prose-headings:text-indigo-800 prose-strong:text-indigo-800 text-indigo-900">
+              <ReactMarkdown remarkPlugins={[remarkMath, remarkGfm]} rehypePlugins={[rehypeKatex]}>
+                {schemeText}
+              </ReactMarkdown>
+              {schemeFetching && <span className="animate-pulse text-indigo-400">▋</span>}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function SessionView() {
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const { language } = useLanguageStore();
+  const speech = useSpeech();
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [highlightedAnswer, setHighlightedAnswer] = useState<string | null>(null);
+  const [input, setInput] = useState('');
+  const [streaming, setStreaming] = useState(false);
+  const [streamingText, setStreamingText] = useState('');
+  const [localMessages, setLocalMessages] = useState<ChatMessage[]>([]);
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  const { data: session, isLoading } = useQuery({
+    queryKey: ['session', id],
+    queryFn: () => getSession(id!),
+    enabled: !!id,
+  });
+
+  const completeMutation = useMutation({
+    mutationFn: () => completeSession(id!),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['session', id] }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: () => deleteSession(id!),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sessions'] });
+      navigate('/history');
+    },
+  });
+
+  useEffect(() => {
+    if (session?.messages) {
+      setLocalMessages(session.messages as ChatMessage[]);
+    }
+  }, [session]);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [localMessages, streamingText]);
+
+  async function sendMessage(override?: string) {
+    const text = override ?? input;
+    if (!text.trim() || streaming) return;
+
+    const userMsg: ChatMessage = { role: 'user', content: text, timestamp: new Date().toISOString() };
+    setLocalMessages((prev) => [...prev, userMsg]);
+    if (!override) setInput('');
+    setStreaming(true);
+    setStreamingText('');
+
+    const token = useAuthStore.getState().token;
+    const res = await fetch(`/api/sessions/${id}/message`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ content: text, language }),
+    });
+
+    const reader = res.body?.getReader();
+    const decoder = new TextDecoder();
+    let full = '';
+
+    if (reader) {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const text = decoder.decode(value);
+        const lines = text.split('\n').filter((l) => l.startsWith('data: '));
+        for (const line of lines) {
+          const json = JSON.parse(line.slice(6));
+          if (json.chunk) {
+            full += json.chunk;
+            setStreamingText(full);
+          }
+        }
+      }
+    }
+
+    const assistantMsg: ChatMessage = { role: 'assistant', content: full, timestamp: new Date().toISOString() };
+    setLocalMessages((prev) => [...prev, assistantMsg]);
+    setStreamingText('');
+    setStreaming(false);
+  }
+
+  if (isLoading || !session) {
+    return <div className="text-center text-gray-400 py-16">Loading session...</div>;
+  }
+
+  return (
+    <div className="flex gap-4 h-[calc(100vh-8rem)]">
+      {/* Left: Question */}
+      <div className="w-2/5 bg-white rounded-xl border border-gray-200 shadow-sm p-5 overflow-y-auto flex-shrink-0">
+        <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Question</h2>
+        {session.question.title && (
+          <p className="text-sm font-semibold text-gray-800 mb-3 leading-snug">{session.question.title}</p>
+        )}
+        <QuestionRenderer
+          parsedContent={session.question.parsedContent as ParsedContent}
+          questionImageUrl={session.question.imageUrl ?? undefined}
+          correctLetter={highlightedAnswer ?? undefined}
+        />
+        <div className="mt-4 pt-4 border-t border-gray-100 space-y-1 text-xs text-gray-500">
+          <p>Mode: <span className="font-medium">{session.mode === 'SELF_ATTEMPT' ? 'Self Attempt' : 'Explanation'}</span></p>
+          <p>Status: <span className={`font-medium ${session.completed ? 'text-green-600' : 'text-yellow-600'}`}>{session.completed ? 'Completed' : 'In Progress'}</span></p>
+        </div>
+        {!session.completed && (
+          <button
+            onClick={() => completeMutation.mutate()}
+            className="mt-4 w-full text-sm bg-green-600 text-white py-2 rounded-lg hover:bg-green-700 transition-colors"
+          >
+            Mark Complete
+          </button>
+        )}
+
+        {confirmDelete ? (
+          <div className="mt-3 flex gap-2">
+            <button
+              onClick={() => setConfirmDelete(false)}
+              className="flex-1 text-xs py-1.5 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => deleteMutation.mutate()}
+              disabled={deleteMutation.isPending}
+              className="flex-1 text-xs py-1.5 rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 transition-colors"
+            >
+              {deleteMutation.isPending ? 'Deleting…' : 'Confirm Delete'}
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => setConfirmDelete(true)}
+            className="mt-2 w-full text-xs py-1.5 rounded-lg border border-red-200 text-red-500 hover:bg-red-50 transition-colors"
+          >
+            Delete Session
+          </button>
+        )}
+      </div>
+
+      {/* Right: Chat */}
+      <div className="flex-1 flex flex-col bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="p-3 border-b border-gray-100 text-xs font-semibold text-gray-400 uppercase tracking-wide">
+          Tutor Chat
+        </div>
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          {localMessages.length === 0 && !streaming && (
+            <div className="flex flex-col items-center justify-center pt-10 gap-4">
+              <p className="text-sm text-gray-400 text-center">
+                {session.mode === 'SELF_ATTEMPT'
+                  ? "Tell the tutor when you're ready to attempt the question."
+                  : 'Start with a quick explanation or type your own message.'}
+              </p>
+              <button
+                onClick={() => { sendMessage(EXPLAIN_LABELS[language]?.message ?? EXPLAIN_LABELS.en.message); }}
+                disabled={streaming || session.completed}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary-600 text-white text-sm font-semibold hover:bg-primary-700 disabled:opacity-50 transition-colors shadow-sm animate-fade-up"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                </svg>
+                {EXPLAIN_LABELS[language]?.label ?? 'Explain'}
+              </button>
+            </div>
+          )}
+
+          {localMessages.map((msg, i) => {
+            const assistantMessages = localMessages.filter(m => m.role === 'assistant');
+            const isLastAssistant = msg.role === 'assistant' && msg === assistantMessages[assistantMessages.length - 1];
+            return msg.role === 'user' ? (
+              <div key={i} className="flex justify-end">
+                <div className="max-w-[70%] px-4 py-2.5 rounded-2xl rounded-br-sm text-sm bg-primary-600 text-white">
+                  {msg.content}
+                </div>
+              </div>
+            ) : (
+              <div key={i} className="flex justify-start">
+                <div className="w-full max-w-[95%]">
+                  <SteppedMessage
+                    content={msg.content}
+                    messageIndex={i}
+                    speech={speech}
+                    language={language as SpeechLang}
+                    parsedContent={session.question.parsedContent as ParsedContent}
+                    sessionId={id!}
+                    isLastMessage={isLastAssistant}
+                    onAnswerRevealed={isLastAssistant ? setHighlightedAnswer : undefined}
+                  />
+                </div>
+              </div>
+            );
+          })}
+
+          {/* Live streaming bubble */}
+          {streaming && (
+            <div className="flex justify-start">
+              <div className="w-full max-w-[95%] rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                {streamingText ? (
+                  <div className="prose prose-sm max-w-none text-gray-800 prose-p:my-1.5">
+                    <ReactMarkdown remarkPlugins={[remarkMath, remarkGfm]} rehypePlugins={[rehypeKatex]} components={mdComponents}>
+                      {streamingText}
+                    </ReactMarkdown>
+                  </div>
+                ) : (
+                  <span className="text-gray-400 text-sm">Thinking…</span>
+                )}
+                <span className="animate-pulse text-primary-500 ml-0.5">▋</span>
+              </div>
+            </div>
+          )}
+
+          <div ref={bottomRef} />
+        </div>
+
+        <div className="p-3 border-t border-gray-100 flex gap-2">
+          <input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
+            placeholder="Type a message..."
+            disabled={streaming || session.completed}
+            className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50"
+          />
+          <button
+            onClick={() => { sendMessage(); }}
+            disabled={!input.trim() || streaming || session.completed}
+            className="bg-primary-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50 transition-colors"
+          >
+            Send
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
