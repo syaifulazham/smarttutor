@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { getSessions, deleteSession } from '@/services/api';
+import InlineMath from '@/components/shared/InlineMath';
 
 interface Session {
   id: string;
@@ -74,7 +75,7 @@ export default function History() {
                     <div className="flex items-center justify-between">
                       <div className="space-y-0.5 min-w-0">
                         <p className="text-sm font-medium text-gray-800 truncate">
-                          {s.question?.title ?? s.question?.subject ?? 'Unknown Question'}
+                          <InlineMath text={s.question?.title ?? s.question?.subject ?? 'Unknown Question'} />
                         </p>
                         <p className="text-xs text-gray-400 truncate">
                           {s.question?.subject ?? ''}

@@ -1,6 +1,7 @@
 import { useParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { getSessions } from '@/services/api';
+import InlineMath from '@/components/shared/InlineMath';
 
 interface Session {
   id: string;
@@ -63,7 +64,7 @@ export default function SubjectSessions() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 min-w-0">
                   <p className="text-sm font-medium text-gray-800 truncate">
-                    {s.question?.title ?? s.question?.subject ?? 'Question'}
+                    <InlineMath text={s.question?.title ?? s.question?.subject ?? 'Question'} />
                   </p>
                   {s.question?.difficulty && (
                     <span className={`flex-shrink-0 text-xs px-1.5 py-0.5 rounded font-medium ${

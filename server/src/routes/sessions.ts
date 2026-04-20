@@ -2,6 +2,7 @@ import { Router, Response, NextFunction } from 'express';
 import { requireAuth, AuthedRequest } from '../middleware/auth';
 import { prisma } from '../prisma/client';
 import { createError } from '../middleware/errorHandler';
+import { sessionGate, schemeGate } from '../middleware/planGate';
 import { streamTutorResponse, streamSchemeAnswer, getCorrectAnswerLetter } from '../services/ai/geminiService';
 import { z } from 'zod';
 
@@ -21,7 +22,7 @@ const submitAnswerSchema = z.object({
   answer: z.string().min(1),
 });
 
-router.post('/', requireAuth, async (req, res: Response, next: NextFunction) => {
+router.post('/', requireAuth, sessionGate, async (req, res: Response, next: NextFunction) => {
   try {
     const { userId } = req as AuthedRequest;
     const { questionId, mode } = createSessionSchema.parse(req.body);
@@ -29,9 +30,10 @@ router.post('/', requireAuth, async (req, res: Response, next: NextFunction) => 
     const question = await prisma.question.findFirst({ where: { id: questionId, userId } });
     if (!question) return next(createError('Question not found', 404));
 
-    const session = await prisma.session.create({
-      data: { userId, questionId, mode, messages: [] },
-    });
+    const [session] = await prisma.$transaction([
+      prisma.session.create({ data: { userId, questionId, mode, messages: [] } }),
+      prisma.user.update({ where: { id: userId }, data: { sessionsUsed: { increment: 1 } } }),
+    ]);
 
     res.status(201).json(session);
   } catch (err) {
@@ -156,7 +158,7 @@ router.post('/:id/complete', requireAuth, async (req, res: Response, next: NextF
   }
 });
 
-// Returns the correct answer letter for an objective question
+// Returns the correct answer letter — serves from DB cache, calls AI only on first request
 router.post('/:id/answer', requireAuth, async (req, res: Response, next: NextFunction) => {
   try {
     const { userId } = req as AuthedRequest;
@@ -165,18 +167,27 @@ router.post('/:id/answer', requireAuth, async (req, res: Response, next: NextFun
       include: { question: true },
     });
     if (!session) return next(createError('Session not found', 404));
+
+    if (session.correctLetter) {
+      return res.json({ letter: session.correctLetter });
+    }
+
     const letter = await getCorrectAnswerLetter(session.question.parsedContent as object);
+    if (letter) {
+      await prisma.session.update({ where: { id: session.id }, data: { correctLetter: letter } });
+    }
     res.json({ letter });
   } catch (err) {
     next(err);
   }
 });
 
-// SSE: stream a scheme/model answer without persisting to messages
-router.post('/:id/scheme', requireAuth, async (req, res: Response, next: NextFunction) => {
+// SSE: stream scheme answer — serves cached version from DB, regenerates only when forced
+router.post('/:id/scheme', requireAuth, schemeGate, async (req, res: Response, next: NextFunction) => {
   try {
     const { userId } = req as AuthedRequest;
-    const { language } = messageSchema.parse({ content: 'x', ...req.body });
+    const language = ['en', 'ms', 'zh'].includes(req.body.language) ? req.body.language : 'en';
+    const regenerate = req.body.regenerate === true;
 
     const session = await prisma.session.findFirst({
       where: { id: req.params.id, userId },
@@ -184,17 +195,34 @@ router.post('/:id/scheme', requireAuth, async (req, res: Response, next: NextFun
     });
     if (!session) return next(createError('Session not found', 404));
 
+    // Return cached scheme as a single SSE chunk (no streaming needed)
+    if (session.schemeAnswer && !regenerate) {
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      res.flushHeaders();
+      res.write(`data: ${JSON.stringify({ chunk: session.schemeAnswer })}\n\n`);
+      res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+      return res.end();
+    }
+
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
     res.flushHeaders();
 
+    let full = '';
     for await (const chunk of streamSchemeAnswer(session.question.parsedContent as object, language)) {
+      full += chunk;
       res.write(`data: ${JSON.stringify({ chunk })}\n\n`);
     }
 
     res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
     res.end();
+
+    if (full) {
+      await prisma.session.update({ where: { id: session.id }, data: { schemeAnswer: full } });
+    }
   } catch (err) {
     next(err);
   }

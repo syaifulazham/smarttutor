@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import TextCapture from '@/components/capture/TextCapture';
 import ImageCapture from '@/components/capture/ImageCapture';
 import QuestionRenderer from '@/components/question/QuestionRenderer';
 import { captureText, captureImage, createSession } from '@/services/api';
+import { useLanguageStore } from '@/store/languageStore';
 import type { ParsedContent } from '../../../../packages/shared/types/question';
 
 type Tab = 'text' | 'image';
@@ -17,20 +18,33 @@ interface CapturedQuestion {
 
 export default function CaptureQuestion() {
   const navigate = useNavigate();
+  const { language } = useLanguageStore();
   const [tab, setTab] = useState<Tab>('text');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [upgradeRequired, setUpgradeRequired] = useState(false);
   const [captured, setCaptured] = useState<CapturedQuestion | null>(null);
   const [startingSession, setStartingSession] = useState(false);
+
+  function extractApiError(err: unknown): { message: string; upgrade: boolean } {
+    const e = err as { response?: { status?: number; data?: { error?: string; upgradeRequired?: boolean } } };
+    if (e?.response?.status === 403) {
+      return { message: e.response.data?.error ?? 'Plan limit reached.', upgrade: true };
+    }
+    return { message: 'Failed to analyse question. Please try again.', upgrade: false };
+  }
 
   async function handleText(text: string) {
     setIsLoading(true);
     setError(null);
+    setUpgradeRequired(false);
     try {
-      const question = await captureText(text);
+      const question = await captureText(text, language);
       setCaptured(question);
-    } catch {
-      setError('Failed to analyse question. Please try again.');
+    } catch (err) {
+      const { message, upgrade } = extractApiError(err);
+      setError(message);
+      setUpgradeRequired(upgrade);
     } finally {
       setIsLoading(false);
     }
@@ -39,11 +53,14 @@ export default function CaptureQuestion() {
   async function handleImage(file: File) {
     setIsLoading(true);
     setError(null);
+    setUpgradeRequired(false);
     try {
-      const question = await captureImage(file);
+      const question = await captureImage(file, language);
       setCaptured(question);
-    } catch {
-      setError('Failed to analyse image. Please try again.');
+    } catch (err) {
+      const { message, upgrade } = extractApiError(err);
+      setError(message);
+      setUpgradeRequired(upgrade);
     } finally {
       setIsLoading(false);
     }
@@ -52,11 +69,15 @@ export default function CaptureQuestion() {
   async function startSession(mode: Mode) {
     if (!captured) return;
     setStartingSession(true);
+    setError(null);
+    setUpgradeRequired(false);
     try {
       const session = await createSession(captured.id, mode);
       navigate(`/session/${session.id}`);
-    } catch {
-      setError('Failed to start session. Please try again.');
+    } catch (err) {
+      const { message, upgrade } = extractApiError(err);
+      setError(message);
+      setUpgradeRequired(upgrade);
       setStartingSession(false);
     }
   }
@@ -92,7 +113,12 @@ export default function CaptureQuestion() {
           )}
           {error && (
             <div className="mx-5 mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600">
-              {error}
+              <p>{error}</p>
+              {upgradeRequired && (
+                <Link to="/pricing" className="mt-2 inline-block font-semibold underline text-primary-600">
+                  View upgrade plans →
+                </Link>
+              )}
             </div>
           )}
         </div>

@@ -8,16 +8,21 @@ datasource db {
 }
 
 model User {
-  id        String     @id @default(cuid())
-  email     String     @unique
-  name      String?
-  password  String?
-  googleId  String?    @unique
-  avatarUrl String?
-  planTier  PlanTier   @default(FREE)
-  createdAt DateTime   @default(now())
-  questions Question[]
-  sessions  Session[]
+  id                   String     @id @default(cuid())
+  email                String     @unique
+  name                 String?
+  password             String?
+  googleId             String?    @unique
+  avatarUrl            String?
+  planTier             PlanTier   @default(FREE)
+  stripeCustomerId     String?    @unique
+  stripeSubscriptionId String?    @unique
+  capturesUsed         Int        @default(0)
+  sessionsUsed         Int        @default(0)
+  billingCycleStart    DateTime   @default(now())
+  createdAt            DateTime   @default(now())
+  questions            Question[]
+  sessions             Session[]
 }
 
 model Question {
@@ -50,6 +55,8 @@ model Session {
   aiExplanation String?
   score         Int?
   completed     Boolean     @default(false)
+  schemeAnswer  String?
+  correctLetter String?
   pdfUrl        String?
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
@@ -69,6 +76,6 @@ enum SessionMode {
 
 enum PlanTier {
   FREE
-  PRO
-  PREMIUM
+  CERDAS
+  CEMERLANG
 }

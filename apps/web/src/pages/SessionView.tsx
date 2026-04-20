@@ -13,7 +13,11 @@ import 'katex/dist/katex.min.css';
 import { useNavigate } from 'react-router-dom';
 import { getSession, completeSession, deleteSession } from '@/services/api';
 import { useAuthStore } from '@/store/authStore';
+import { preprocessMath, stripOuterCodeFence, normalizeSchemeMarkdown } from '@/utils/preprocessMath';
 import QuestionRenderer from '@/components/question/QuestionRenderer';
+import InlineMath from '@/components/shared/InlineMath';
+import AvatarPicker from '@/components/shared/AvatarPicker';
+import { useAvatarStore } from '@/store/avatarStore';
 import { useLanguageStore } from '@/store/languageStore';
 import type { ParsedContent, OptionsComponent } from '../../../../packages/shared/types/question';
 
@@ -101,6 +105,94 @@ const mdComponents: Partial<Components> = {
 };
 
 
+// ─── Inline quiz ─────────────────────────────────────────────────────────────
+interface QuizData {
+  question: string;
+  options: { letter: string; text: string }[];
+  answer: string;
+}
+
+const QUIZ_REGEX = /\[QUIZ:\s*(.*?)\s*\|\s*A\)\s*(.*?)\s*\|\s*B\)\s*(.*?)\s*\|\s*C\)\s*(.*?)\s*\|\s*D\)\s*(.*?)\s*\|\s*ANS:([A-D])\]/gi;
+
+function parseQuizParts(content: string): Array<{ type: 'text'; text: string } | { type: 'quiz'; data: QuizData }> {
+  const parts: Array<{ type: 'text'; text: string } | { type: 'quiz'; data: QuizData }> = [];
+  let last = 0;
+  for (const m of content.matchAll(QUIZ_REGEX)) {
+    if (m.index! > last) parts.push({ type: 'text', text: content.slice(last, m.index) });
+    parts.push({
+      type: 'quiz',
+      data: {
+        question: m[1].trim(),
+        options: [
+          { letter: 'A', text: m[2].trim() },
+          { letter: 'B', text: m[3].trim() },
+          { letter: 'C', text: m[4].trim() },
+          { letter: 'D', text: m[5].trim() },
+        ],
+        answer: m[6].toUpperCase(),
+      },
+    });
+    last = m.index! + m[0].length;
+  }
+  if (last < content.length) parts.push({ type: 'text', text: content.slice(last) });
+  return parts;
+}
+
+function QuizBlock({ data }: { data: QuizData }) {
+  const [selected, setSelected] = useState<string | null>(null);
+  const answered = selected !== null;
+
+  return (
+    <div className="my-3 rounded-xl border-2 border-purple-200 bg-purple-50 p-4 animate-slide-down">
+      <p className="text-[10px] font-bold text-purple-600 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+        </svg>
+        Quick Check
+      </p>
+      <p className="text-sm font-medium text-gray-800 mb-3">{data.question}</p>
+      <div className="space-y-2">
+        {data.options.map(({ letter, text }) => {
+          const isCorrect = letter === data.answer;
+          const isSelected = selected === letter;
+          const base = 'w-full text-left px-3 py-2 rounded-lg border text-sm transition-all flex items-center gap-2';
+          const style = !answered
+            ? `${base} border-gray-300 bg-white hover:border-purple-400 hover:bg-purple-50 text-gray-700`
+            : isSelected && isCorrect
+              ? `${base} border-green-500 bg-green-50 text-green-800 font-medium`
+              : isSelected && !isCorrect
+                ? `${base} border-red-400 bg-red-50 text-red-700`
+                : isCorrect
+                  ? `${base} border-green-400 bg-green-50 text-green-700`
+                  : `${base} border-gray-200 bg-gray-50 text-gray-400`;
+          return (
+            <button key={letter} disabled={answered} onClick={() => setSelected(letter)} className={style}>
+              <span className={`flex-shrink-0 w-5 h-5 rounded-full border text-[10px] font-bold flex items-center justify-center
+                ${!answered ? 'border-gray-400 text-gray-500' : isCorrect ? 'border-green-500 bg-green-500 text-white' : isSelected ? 'border-red-400 bg-red-400 text-white' : 'border-gray-300 text-gray-400'}`}>
+                {letter}
+              </span>
+              {text}
+              {answered && isCorrect && (
+                <svg className="w-4 h-4 text-green-500 ml-auto flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              )}
+            </button>
+          );
+        })}
+      </div>
+      {answered && (
+        <p className={`mt-2.5 text-xs font-semibold flex items-center gap-1 ${selected === data.answer ? 'text-green-600' : 'text-red-600'}`}>
+          {selected === data.answer
+            ? '✓ Correct! Well done.'
+            : `✗ Not quite — the correct answer is ${data.answer}.`}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ─── Option finder ────────────────────────────────────────────────────────────
 // Find the full option text matching the letter
 function findOption(parsedContent: ParsedContent | undefined, letter: string): string | null {
   if (!parsedContent) return null;
@@ -112,19 +204,28 @@ function findOption(parsedContent: ParsedContent | undefined, letter: string): s
 }
 
 function MarkdownStep({ content }: { content: string }) {
+  const parts = parseQuizParts(content);
   return (
-    <div className="prose prose-sm max-w-none
-      prose-headings:text-gray-900 prose-headings:font-semibold prose-headings:mt-2 prose-headings:mb-1
-      prose-p:my-1.5 prose-p:leading-relaxed prose-p:text-gray-800
-      prose-ul:my-1 prose-ul:pl-4 prose-ol:my-1 prose-ol:pl-4 prose-li:my-0.5
-      prose-blockquote:border-l-2 prose-blockquote:border-primary-400 prose-blockquote:pl-3 prose-blockquote:text-gray-600">
-      <ReactMarkdown
-        remarkPlugins={[remarkMath, remarkGfm]}
-        rehypePlugins={[rehypeKatex]}
-        components={mdComponents}
-      >
-        {content}
-      </ReactMarkdown>
+    <div>
+      {parts.map((part, i) =>
+        part.type === 'quiz' ? (
+          <QuizBlock key={i} data={part.data} />
+        ) : (
+          <div key={i} className="prose prose-sm max-w-none
+            prose-headings:text-gray-900 prose-headings:font-semibold prose-headings:mt-2 prose-headings:mb-1
+            prose-p:my-1.5 prose-p:leading-relaxed prose-p:text-gray-800
+            prose-ul:my-1 prose-ul:pl-4 prose-ol:my-1 prose-ol:pl-4 prose-li:my-0.5
+            prose-blockquote:border-l-2 prose-blockquote:border-primary-400 prose-blockquote:pl-3 prose-blockquote:text-gray-600">
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm, remarkMath]}
+              rehypePlugins={[rehypeKatex]}
+              components={mdComponents}
+            >
+              {preprocessMath(part.text)}
+            </ReactMarkdown>
+          </div>
+        )
+      )}
     </div>
   );
 }
@@ -153,13 +254,28 @@ function SteppedMessage({ content, messageIndex, speech, language, parsedContent
   const [schemeText, setSchemeText] = useState('');
   const [schemeFetching, setSchemeFetching] = useState(false);
 
+  // Restore persisted scheme / answer from session data on mount
+  useEffect(() => {
+    if (!isLastMessage) return;
+    const token = useAuthStore.getState().token;
+    const headers = token ? { Authorization: `Bearer ${token}` } : {};
+    fetch(`/api/sessions/${sessionId}`, { headers })
+      .then(r => r.json())
+      .then((s) => {
+        if (s.schemeAnswer) { setShowAnswer(true); setSchemeText(s.schemeAnswer); }
+        if (s.correctLetter) { setShowAnswer(true); setResolvedLetter(s.correctLetter); onAnswerRevealed?.(s.correctLetter); }
+      })
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId, isLastMessage]);
+
   const hasMore = revealed < parts.length;
   const allRevealed = !hasMore;
 
   const isObjective = parsedContent?.components.some(c => c.type === 'options') ?? false;
   const correctOption = resolvedLetter ? findOption(parsedContent, resolvedLetter) : null;
 
-  async function handleShowAnswer() {
+  async function handleShowAnswer(regenerate = false) {
     setShowAnswer(true);
     const token = useAuthStore.getState().token;
     const headers: Record<string, string> = {
@@ -168,39 +284,51 @@ function SteppedMessage({ content, messageIndex, speech, language, parsedContent
     };
 
     if (isObjective) {
-      // Ask AI for the definitive correct letter
-      const res = await fetch(`/api/sessions/${sessionId}/answer`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({}),
-      });
-      const { letter } = await res.json();
-      setResolvedLetter(letter ?? null);
-      onAnswerRevealed?.(letter ?? null);
+      try {
+        const res = await fetch(`/api/sessions/${sessionId}/answer`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({}),
+        });
+        if (!res.ok) throw new Error(`Server error ${res.status}`);
+        const { letter } = await res.json();
+        setResolvedLetter(letter ?? null);
+        onAnswerRevealed?.(letter ?? null);
+      } catch (err) {
+        console.error('Answer fetch failed:', err);
+      }
     } else {
       setSchemeFetching(true);
       setSchemeText('');
-      const res = await fetch(`/api/sessions/${sessionId}/scheme`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ language }),
-      });
-      const reader = res.body?.getReader();
-      const decoder = new TextDecoder();
-      let full = '';
-      if (reader) {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          const lines = decoder.decode(value).split('\n').filter(l => l.startsWith('data: '));
-          for (const line of lines) {
-            const json = JSON.parse(line.slice(6));
-            if (json.chunk) { full += json.chunk; setSchemeText(full); }
+      try {
+        const res = await fetch(`/api/sessions/${sessionId}/scheme`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ language, regenerate }),
+        });
+        if (!res.ok) throw new Error(`Server error ${res.status}`);
+        const reader = res.body?.getReader();
+        const decoder = new TextDecoder();
+        let full = '';
+        if (reader) {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            const lines = decoder.decode(value).split('\n').filter(l => l.startsWith('data: '));
+            for (const line of lines) {
+              try {
+                const json = JSON.parse(line.slice(6));
+                if (json.chunk) { full += json.chunk; setSchemeText(full); }
+              } catch { /* skip malformed SSE line */ }
+            }
           }
         }
+        onAnswerRevealed?.(null);
+      } catch (err) {
+        console.error('Scheme fetch failed:', err);
+      } finally {
+        setSchemeFetching(false);
       }
-      setSchemeFetching(false);
-      onAnswerRevealed?.(null);
     }
   }
 
@@ -274,7 +402,7 @@ function SteppedMessage({ content, messageIndex, speech, language, parsedContent
       {/* Show Answer button — appears once all steps revealed, only on the last message */}
       {allRevealed && isLastMessage && !showAnswer && (
         <button
-          onClick={handleShowAnswer}
+          onClick={() => handleShowAnswer()}
           className="animate-fade-up flex items-center gap-2 px-4 py-2 rounded-lg border-2 border-indigo-300 bg-indigo-50 text-indigo-700 text-sm font-semibold hover:bg-indigo-100 hover:border-indigo-400 transition-colors"
         >
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -316,18 +444,32 @@ function SteppedMessage({ content, messageIndex, speech, language, parsedContent
       {/* Subjective: scheme answer card */}
       {showAnswer && !isObjective && (
         <div className="animate-slide-down rounded-xl border-2 border-indigo-300 bg-indigo-50 px-4 py-3">
-          <p className="text-xs font-bold text-indigo-600 uppercase tracking-wide mb-2 flex items-center gap-1.5">
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-            Marking Scheme / Model Answer
-          </p>
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs font-bold text-indigo-600 uppercase tracking-wide flex items-center gap-1.5">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              Marking Scheme / Model Answer
+            </p>
+            {!schemeFetching && schemeText && (
+              <button
+                onClick={() => { setSchemeText(''); handleShowAnswer(true); }}
+                className="text-[10px] text-indigo-400 hover:text-indigo-600 flex items-center gap-1 transition-colors"
+                title="Regenerate scheme"
+              >
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                Regenerate
+              </button>
+            )}
+          </div>
           {schemeFetching && !schemeText ? (
             <span className="text-indigo-400 text-sm">Generating scheme<span className="animate-pulse">…</span></span>
           ) : (
-            <div className="prose prose-sm max-w-none prose-p:my-1 prose-li:my-0.5 prose-headings:text-indigo-800 prose-strong:text-indigo-800 text-indigo-900">
-              <ReactMarkdown remarkPlugins={[remarkMath, remarkGfm]} rehypePlugins={[rehypeKatex]}>
-                {schemeText}
+            <div className="prose prose-sm max-w-none prose-headings:text-indigo-800 prose-headings:font-bold prose-headings:mt-4 prose-headings:mb-1 prose-h3:text-sm prose-strong:text-indigo-800 prose-li:my-1 prose-ul:my-1 prose-p:my-1.5 text-indigo-900 [&>*:first-child]:mt-0">
+              <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+                {preprocessMath(normalizeSchemeMarkdown(stripOuterCodeFence(schemeText)))}
               </ReactMarkdown>
               {schemeFetching && <span className="animate-pulse text-indigo-400">▋</span>}
             </div>
@@ -343,7 +485,9 @@ export default function SessionView() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { language } = useLanguageStore();
+  const { avatar } = useAvatarStore();
   const speech = useSpeech();
+  const [showAvatarPicker, setShowAvatarPicker] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [highlightedAnswer, setHighlightedAnswer] = useState<string | null>(null);
   const [input, setInput] = useState('');
@@ -432,12 +576,15 @@ export default function SessionView() {
   }
 
   return (
+    <>
     <div className="flex gap-4 h-[calc(100vh-8rem)]">
       {/* Left: Question */}
       <div className="w-2/5 bg-white rounded-xl border border-gray-200 shadow-sm p-5 overflow-y-auto flex-shrink-0">
         <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Question</h2>
         {session.question.title && (
-          <p className="text-sm font-semibold text-gray-800 mb-3 leading-snug">{session.question.title}</p>
+          <p className="text-sm font-semibold text-gray-800 mb-3 leading-snug">
+            <InlineMath text={session.question.title} />
+          </p>
         )}
         <QuestionRenderer
           parsedContent={session.question.parsedContent as ParsedContent}
@@ -485,8 +632,27 @@ export default function SessionView() {
 
       {/* Right: Chat */}
       <div className="flex-1 flex flex-col bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-        <div className="p-3 border-b border-gray-100 text-xs font-semibold text-gray-400 uppercase tracking-wide">
-          Tutor Chat
+        <div className="px-3 py-2 border-b border-gray-100 flex items-center gap-2.5">
+          <button
+            onClick={() => setShowAvatarPicker(true)}
+            className="flex-shrink-0 relative group"
+            title="Change tutor avatar"
+          >
+            <img
+              src={avatar.url}
+              alt={avatar.name}
+              className="w-9 h-9 rounded-full object-cover bg-gray-100 ring-2 ring-primary-200 group-hover:ring-primary-400 transition-all"
+            />
+            <span className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-white rounded-full flex items-center justify-center shadow-sm border border-gray-200 group-hover:border-primary-300 transition-colors">
+              <svg className="w-2.5 h-2.5 text-gray-400 group-hover:text-primary-500 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536M9 13l6.586-6.586a2 2 0 012.828 2.828L11.828 15.828a2 2 0 01-1.414.586H9v-2a2 2 0 01.586-1.414z" />
+              </svg>
+            </span>
+          </button>
+          <div>
+            <p className="text-sm font-semibold text-gray-800 leading-tight">{avatar.name}</p>
+            <p className="text-[10px] text-gray-400 leading-tight">{avatar.tagline}</p>
+          </div>
         </div>
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           {localMessages.length === 0 && !streaming && (
@@ -519,8 +685,13 @@ export default function SessionView() {
                 </div>
               </div>
             ) : (
-              <div key={i} className="flex justify-start">
-                <div className="w-full max-w-[95%]">
+              <div key={i} className="flex justify-start gap-2">
+                <img
+                  src={avatar.url}
+                  alt={avatar.name}
+                  className="flex-shrink-0 w-7 h-7 rounded-full object-cover bg-gray-100 mt-1 ring-1 ring-gray-200"
+                />
+                <div className="flex-1 min-w-0">
                   <SteppedMessage
                     content={msg.content}
                     messageIndex={i}
@@ -538,12 +709,17 @@ export default function SessionView() {
 
           {/* Live streaming bubble */}
           {streaming && (
-            <div className="flex justify-start">
-              <div className="w-full max-w-[95%] rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <div className="flex justify-start gap-2">
+              <img
+                src={avatar.url}
+                alt={avatar.name}
+                className="flex-shrink-0 w-7 h-7 rounded-full object-cover bg-gray-100 mt-1 ring-1 ring-gray-200"
+              />
+              <div className="flex-1 min-w-0 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
                 {streamingText ? (
                   <div className="prose prose-sm max-w-none text-gray-800 prose-p:my-1.5">
-                    <ReactMarkdown remarkPlugins={[remarkMath, remarkGfm]} rehypePlugins={[rehypeKatex]} components={mdComponents}>
-                      {streamingText}
+                    <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]} components={mdComponents}>
+                      {preprocessMath(streamingText)}
                     </ReactMarkdown>
                   </div>
                 ) : (
@@ -576,5 +752,7 @@ export default function SessionView() {
         </div>
       </div>
     </div>
+    {showAvatarPicker && <AvatarPicker onClose={() => setShowAvatarPicker(false)} />}
+    </>
   );
 }

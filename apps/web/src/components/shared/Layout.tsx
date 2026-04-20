@@ -1,13 +1,19 @@
+import { useEffect } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useLanguageStore, LANGUAGE_LABELS, Language } from '@/store/languageStore';
 import { useAuthStore } from '@/store/authStore';
+import { getMe } from '@/services/api';
 
 const LANGUAGES: Language[] = ['en', 'ms', 'zh'];
 
 export default function Layout() {
   const { language, setLanguage } = useLanguageStore();
-  const { user, clearAuth } = useAuthStore();
+  const { user, setUser, clearAuth } = useAuthStore();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    getMe().then(setUser).catch(() => {});
+  }, []);
 
   const linkClass = ({ isActive }: { isActive: boolean }) =>
     `px-3 py-2 rounded-md text-sm font-medium transition-colors ${
@@ -25,12 +31,28 @@ export default function Layout() {
     <div className="min-h-screen flex flex-col">
       <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
         <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
-          <span className="font-bold text-primary-600 text-lg">Tcher Ayu</span>
+          <div className="flex items-center gap-2">
+            <img src="/logo.png" alt="Tcher Ayu" className="h-11 w-auto" />
+            <div className="flex flex-col leading-none">
+              <span className="text-2xl text-gray-900 tracking-wide" style={{ fontFamily: "'Bitcount Prop Single', sans-serif" }}>TCHER AYU</span>
+              {user?.planTier && (
+                <span className={`text-[10px] font-semibold tracking-widest uppercase -mt-0.5 ${
+                  user.planTier === 'CEMERLANG' ? 'text-violet-500' :
+                  user.planTier === 'CERDAS' ? 'text-primary-500' :
+                  'text-gray-400'
+                }`}>
+                  {user.planTier === 'CEMERLANG' ? 'Cemerlang' :
+                   user.planTier === 'CERDAS' ? 'Cerdas' : 'Free'}
+                </span>
+              )}
+            </div>
+          </div>
           <div className="flex items-center gap-3">
             <nav className="flex gap-1">
               <NavLink to="/dashboard" end className={linkClass}>Dashboard</NavLink>
               <NavLink to="/capture" className={linkClass}>Capture</NavLink>
               <NavLink to="/history" className={linkClass}>History</NavLink>
+              <NavLink to="/billing" className={linkClass}>Billing</NavLink>
             </nav>
             <div className="flex items-center gap-0.5 bg-gray-100 rounded-lg p-1">
               {LANGUAGES.map((lang) => (

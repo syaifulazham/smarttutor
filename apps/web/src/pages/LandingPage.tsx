@@ -9,12 +9,8 @@ export default function LandingPage() {
       {/* Nav */}
       <nav className="flex items-center justify-between px-6 py-4 max-w-6xl mx-auto">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-primary-600 flex items-center justify-center">
-            <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-            </svg>
-          </div>
-          <span className="text-lg font-bold text-gray-900">Tcher Ayu</span>
+          <img src="/logo.png" alt="Tcher Ayu" className="h-11 w-auto" />
+          <span className="text-2xl text-gray-900 tracking-wide" style={{ fontFamily: "'Bitcount Prop Single', sans-serif" }}>TCHER AYU</span>
         </div>
         <div className="flex items-center gap-3">
           {user ? (
@@ -65,6 +61,7 @@ export default function LandingPage() {
               ),
               title: 'Capture any question',
               desc: 'Snap a photo, paste text, or type directly. AI extracts and structures the question automatically.',
+              avatar: '/avatars/ayu.png',
             },
             {
               icon: (
@@ -74,6 +71,7 @@ export default function LandingPage() {
               ),
               title: 'Step-by-step AI tutor',
               desc: 'Get guided, animated explanations broken into digestible steps — not a wall of text.',
+              avatar: '/avatars/sara.png',
             },
             {
               icon: (
@@ -83,14 +81,24 @@ export default function LandingPage() {
               ),
               title: 'Multilingual voice',
               desc: 'Switch between English, Malay, and Mandarin. Hear explanations read aloud in your language.',
+              avatar: '/avatars/rajan.png',
             },
-          ].map(({ icon, title, desc }) => (
-            <div key={title} className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm hover:shadow-md transition-shadow">
-              <div className="w-10 h-10 rounded-lg bg-primary-50 text-primary-600 flex items-center justify-center mb-4">
-                {icon}
+          ].map(({ icon, title, desc, avatar }) => (
+            <div key={title} className="relative bg-white rounded-2xl border border-gray-200 p-6 shadow-sm hover:shadow-md transition-shadow overflow-hidden">
+              {/* Avatar watermark */}
+              <img
+                src={avatar}
+                alt=""
+                aria-hidden
+                className="absolute -bottom-4 -right-4 w-32 h-32 object-contain opacity-10 pointer-events-none select-none"
+              />
+              <div className="relative z-10">
+                <div className="w-10 h-10 rounded-lg bg-primary-50 text-primary-600 flex items-center justify-center mb-4">
+                  {icon}
+                </div>
+                <h3 className="text-sm font-semibold text-gray-900 mb-2">{title}</h3>
+                <p className="text-sm text-gray-500 leading-relaxed">{desc}</p>
               </div>
-              <h3 className="text-sm font-semibold text-gray-900 mb-2">{title}</h3>
-              <p className="text-sm text-gray-500 leading-relaxed">{desc}</p>
             </div>
           ))}
         </div>

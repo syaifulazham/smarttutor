@@ -13,6 +13,7 @@ import questionRoutes from './routes/questions';
 import sessionRoutes from './routes/sessions';
 import exportRoutes from './routes/export';
 import authRoutes from './routes/auth';
+import billingRoutes, { handleWebhook } from './routes/billing';
 import { errorHandler } from './middleware/errorHandler';
 
 const app = express();
@@ -27,6 +28,10 @@ app.use(cors({
   origin: process.env.FRONTEND_URL ?? 'http://localhost:3000',
   credentials: true,
 }));
+
+// Stripe webhook needs raw body — must be registered BEFORE express.json()
+app.post('/api/billing/webhook', express.raw({ type: 'application/json' }), handleWebhook);
+
 app.use(express.json());
 
 app.use(session({
@@ -51,6 +56,7 @@ app.use('/api/capture', aiLimiter, captureRoutes);
 app.use('/api/sessions', aiLimiter, sessionRoutes);
 app.use('/api/questions', questionRoutes);
 app.use('/api/export', exportRoutes);
+app.use('/api/billing', billingRoutes);
 
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 

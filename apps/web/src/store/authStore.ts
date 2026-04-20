@@ -6,12 +6,14 @@ interface AuthUser {
   email: string;
   name?: string | null;
   avatarUrl?: string | null;
+  planTier?: 'FREE' | 'CERDAS' | 'CEMERLANG' | null;
 }
 
 interface AuthState {
   token: string | null;
   user: AuthUser | null;
   setAuth: (token: string, user: AuthUser) => void;
+  setUser: (user: AuthUser) => void;
   clearAuth: () => void;
 }
 
@@ -21,6 +23,7 @@ export const useAuthStore = create<AuthState>()(
       token: null,
       user: null,
       setAuth: (token, user) => set({ token, user }),
+      setUser: (user) => set({ user }),
       clearAuth: () => set({ token: null, user: null }),
     }),
     { name: 'qc-auth' }

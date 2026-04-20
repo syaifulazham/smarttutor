@@ -7,6 +7,7 @@ import { requireAuth, AuthedRequest } from '../middleware/auth';
 import { prisma } from '../prisma/client';
 import { parseQuestionFromText, parseQuestionFromImage } from '../services/ai/geminiService';
 import { createError } from '../middleware/errorHandler';
+import { captureGate } from '../middleware/planGate';
 import { z } from 'zod';
 
 const uploadsDir = path.join(__dirname, '..', '..', 'uploads');
@@ -31,28 +32,44 @@ const textInputSchema = z.object({
   text: z.string().min(5, 'Question text must be at least 5 characters'),
 });
 
+function safeSliceTitle(text: string, maxLen: number): string {
+  if (text.length <= maxLen) return text;
+  let sliced = text.slice(0, maxLen);
+  // If an odd number of $ signs → we cut inside a math expression; trim back to before the last $
+  const dollars = (sliced.match(/\$/g) ?? []).length;
+  if (dollars % 2 !== 0) {
+    const lastDollar = sliced.lastIndexOf('$');
+    sliced = sliced.slice(0, lastDollar).trimEnd();
+  }
+  return sliced;
+}
+
 // POST /api/capture/text
-router.post('/text', requireAuth, async (req, res: Response, next: NextFunction) => {
+router.post('/text', requireAuth, captureGate, async (req, res: Response, next: NextFunction) => {
   try {
     const { userId } = req as AuthedRequest;
     const { text } = textInputSchema.parse(req.body);
+    const language = ['en', 'ms', 'zh'].includes(req.body.language) ? req.body.language : 'en';
 
-    const parsedContent = await parseQuestionFromText(text);
+    const parsedContent = await parseQuestionFromText(text, language);
 
-    const title = parsedContent.questionText.replace(/\s+/g, ' ').trim().slice(0, 100);
+    const title = safeSliceTitle(parsedContent.questionText.replace(/\s+/g, ' ').trim(), 100);
 
-    const question = await prisma.question.create({
-      data: {
-        userId,
-        sourceType: 'TEXT',
-        title,
-        rawInput: text,
-        parsedContent,
-        subject: parsedContent.subject,
-        difficulty: parsedContent.difficulty,
-        tags: parsedContent.tags,
-      },
-    });
+    const [question] = await prisma.$transaction([
+      prisma.question.create({
+        data: {
+          userId,
+          sourceType: 'TEXT',
+          title,
+          rawInput: text,
+          parsedContent,
+          subject: parsedContent.subject,
+          difficulty: parsedContent.difficulty,
+          tags: parsedContent.tags,
+        },
+      }),
+      prisma.user.update({ where: { id: userId }, data: { capturesUsed: { increment: 1 } } }),
+    ]);
 
     res.status(201).json(question);
   } catch (err) {
@@ -64,6 +81,7 @@ router.post('/text', requireAuth, async (req, res: Response, next: NextFunction)
 router.post(
   '/image',
   requireAuth,
+  captureGate,
   upload.single('image'),
   async (req, res: Response, next: NextFunction) => {
     try {
@@ -80,22 +98,26 @@ router.post(
       fs.writeFileSync(path.join(uploadsDir, filename), req.file.buffer);
       const imageUrl = `/uploads/${filename}`;
 
-      const parsedContent = await parseQuestionFromImage(imageBase64, mimeType, imageUrl);
+      const language = ['en', 'ms', 'zh'].includes(req.body.language) ? req.body.language : 'en';
+      const parsedContent = await parseQuestionFromImage(imageBase64, mimeType, imageUrl, language);
 
-      const title = parsedContent.questionText.replace(/\s+/g, ' ').trim().slice(0, 100);
+      const title = safeSliceTitle(parsedContent.questionText.replace(/\s+/g, ' ').trim(), 100);
 
-      const question = await prisma.question.create({
-        data: {
-          userId,
-          sourceType: 'IMAGE',
-          title,
-          imageUrl,
-          parsedContent,
-          subject: parsedContent.subject,
-          difficulty: parsedContent.difficulty,
-          tags: parsedContent.tags,
-        },
-      });
+      const [question] = await prisma.$transaction([
+        prisma.question.create({
+          data: {
+            userId,
+            sourceType: 'IMAGE',
+            title,
+            imageUrl,
+            parsedContent,
+            subject: parsedContent.subject,
+            difficulty: parsedContent.difficulty,
+            tags: parsedContent.tags,
+          },
+        }),
+        prisma.user.update({ where: { id: userId }, data: { capturesUsed: { increment: 1 } } }),
+      ]);
 
       res.status(201).json(question);
     } catch (err) {

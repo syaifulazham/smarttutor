@@ -32,14 +32,15 @@ export async function getMe() {
 }
 
 // ─── Capture ─────────────────────────────────────────────────────────────────
-export async function captureText(text: string) {
-  const { data } = await api.post('/capture/text', { text });
+export async function captureText(text: string, language = 'en') {
+  const { data } = await api.post('/capture/text', { text, language });
   return data;
 }
 
-export async function captureImage(file: File) {
+export async function captureImage(file: File, language = 'en') {
   const form = new FormData();
   form.append('image', file);
+  form.append('language', language);
   const { data } = await api.post('/capture/image', form, {
     headers: { 'Content-Type': 'multipart/form-data' },
   });
@@ -86,4 +87,25 @@ export async function completeSession(sessionId: string) {
 export async function deleteSession(sessionId: string) {
   const { data } = await api.delete(`/sessions/${sessionId}`);
   return data;
+}
+
+// ─── Billing ──────────────────────────────────────────────────────────────────
+export async function getBillingPlans() {
+  const { data } = await api.get('/billing/plans');
+  return data;
+}
+
+export async function getBillingStatus() {
+  const { data } = await api.get('/billing/status');
+  return data;
+}
+
+export async function createCheckoutSession(tier: 'CERDAS' | 'CEMERLANG') {
+  const { data } = await api.post('/billing/checkout', { tier });
+  return data as { url: string };
+}
+
+export async function openCustomerPortal() {
+  const { data } = await api.post('/billing/portal');
+  return data as { url: string };
 }

@@ -5,8 +5,18 @@ import { ParsedContent } from '../../../../packages/shared/types/question';
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY ?? '');
 const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
-const PARSE_SYSTEM_PROMPT = `You are an expert at parsing academic questions from any source.
+const LANGUAGE_OUTPUT: Record<string, string> = {
+  en: 'Write ALL text fields (questionText, component text, options) in English.',
+  ms: 'Tulis SEMUA medan teks (questionText, teks komponen, pilihan jawapan) dalam Bahasa Melayu.',
+  zh: '将所有文本字段（questionText、组件文本、选项）用普通话（简体中文）书写。',
+};
+
+function buildParsePrompt(language = 'en'): string {
+  const langInstruction = LANGUAGE_OUTPUT[language] ?? LANGUAGE_OUTPUT['en'];
+  return `You are an expert at parsing academic questions from any source.
 Given an image or text, extract and structure the question.
+
+${langInstruction}
 
 Return ONLY a raw JSON object (no markdown, no code fences):
 {
@@ -27,6 +37,7 @@ Return ONLY a raw JSON object (no markdown, no code fences):
 
 Use LaTeX for ALL mathematical expressions.
 For diagrams, output VALID Mermaid.js syntax (e.g. graph TD, flowchart LR, sequenceDiagram) — not plain English descriptions. If the diagram cannot be represented in Mermaid, omit the component entirely.`;
+}
 
 const parsedContentSchema = z.object({
   questionText: z.string(),
@@ -79,9 +90,9 @@ async function enrichDiagrams(
   return { ...parsed, components };
 }
 
-export async function parseQuestionFromText(text: string): Promise<ParsedContent> {
+export async function parseQuestionFromText(text: string, language = 'en'): Promise<ParsedContent> {
   const result = await model.generateContent([
-    PARSE_SYSTEM_PROMPT,
+    buildParsePrompt(language),
     `Parse this question:\n\n${text}`,
   ]);
 
@@ -93,14 +104,15 @@ export async function parseQuestionFromText(text: string): Promise<ParsedContent
 export async function parseQuestionFromImage(
   imageBase64: string,
   mimeType: string,
-  imageUrl?: string
+  imageUrl?: string,
+  language = 'en'
 ): Promise<ParsedContent> {
   const imagePart: Part = {
     inlineData: { data: imageBase64, mimeType },
   };
 
   const result = await model.generateContent([
-    PARSE_SYSTEM_PROMPT,
+    buildParsePrompt(language),
     'Parse the academic question from this image:',
     imagePart,
   ]);
@@ -137,23 +149,64 @@ export async function getCorrectAnswerLetter(questionContent: object): Promise<s
 
 const SCHEME_PROMPT: Record<string, string> = {
   en: `You are providing a model answer / marking scheme for this question.
-Format clearly using markdown:
-- For short/long answer questions: list the key points with marks allocation (e.g. "• Correct identification of X [1m]")
-- For calculation questions: show full working with each step marked
-- For diagram-based: describe what a full-mark answer must include
-Be concise but complete. A student should be able to self-assess from this scheme.`,
+Output ONLY valid markdown. Do NOT wrap in code fences or backticks.
+
+Structure rules (follow exactly):
+1. If the question has sub-parts (a), (b), (c)…, start each with a ### heading, e.g. ### (a) Find the value of p
+2. Under each heading, list every marking point as a markdown list item ("- "). Do NOT use the bullet character (•).
+3. End each marking point with the mark in brackets, e.g. [1m].
+4. Leave a blank line between each ### section.
+
+MATH FORMATTING — critical:
+- NEVER mix an equation and a text statement on the same line.
+- Every equation or working step goes on its OWN line using display math: $$equation$$
+- Only single variables or trivial values may stay inline: $p = 1$, $x = h$
+- Each arrow / implication (⟹) that leads to the next step must start a NEW line.
+
+Example of correct format:
+### (a) Find p
+
+- Substitute point $(0, 7)$ into the function:
+$$7 = 2(0 - p)^2 + 5$$
+$$2p^2 = 2$$
+$$p = \pm 1$$ [1m]
+- Verify with $(2, 7)$ using $p = 1$:
+$$y = 2(2-1)^2 + 5 = 7 \checkmark$$ [1m]
+
+### (b) Axis of symmetry
+
+- General form $y = a(x-h)^2+k$ has axis of symmetry $x = h$. [1m]
+- With $p = 1$, axis of symmetry is $x = 1$. [1m]`,
+
   ms: `Anda menyediakan skema jawapan / model jawapan untuk soalan ini.
-Format dengan jelas menggunakan markdown:
-- Untuk soalan pendek/panjang: senaraikan isi penting dengan peruntukan markah (cth. "• Mengenal pasti X dengan betul [1m]")
-- Untuk soalan pengiraan: tunjukkan langkah penuh dengan markah setiap langkah
-- Untuk soalan berasaskan rajah: huraikan apa yang perlu ada dalam jawapan markah penuh
-Ringkas tapi lengkap.`,
+Output HANYA markdown yang betul. JANGAN balut dengan code fence atau backtick.
+
+Peraturan struktur (ikut dengan tepat):
+1. Jika soalan ada bahagian (a), (b), (c)…, mulakan setiap bahagian dengan heading ###, cth. ### (a) Cari nilai p
+2. Di bawah setiap heading, senaraikan setiap isi penting sebagai item senarai markdown ("- "). JANGAN gunakan aksara bullet (•).
+3. Akhiri setiap isi dengan markah dalam kurungan, cth. [1m].
+4. Tinggalkan baris kosong antara setiap bahagian ###.
+
+FORMAT MATEMATIK — penting:
+- JANGAN letakkan persamaan dan kenyataan teks dalam baris yang sama.
+- Setiap persamaan atau langkah pengiraan mesti berada pada barisnya SENDIRI menggunakan display math: $$persamaan$$
+- Hanya pemboleh ubah tunggal atau nilai ringkas boleh kekal sebaris: $p = 1$
+- Setiap anak panah / implikasi yang membawa ke langkah seterusnya mesti bermula pada baris BARU.`,
+
   zh: `你正在为这道题提供标准答案/评分方案。
-使用 markdown 清晰格式化：
-- 对于简答/长答题：列出要点并标注分值（例如"• 正确识别 X [1分]"）
-- 对于计算题：展示完整步骤，每步标注分值
-- 对于图表题：描述满分答案必须包含的内容
-简洁但完整。`,
+只输出有效的 markdown — 不要用代码围栏或反引号包裹。
+
+结构规则（严格遵守）：
+1. 若题目有子问 (a)(b)(c)…，每个子问以 ### 标题开始，例如：### (a) 求 p 的值
+2. 每个标题下，用 markdown 列表项（"- " 开头）列出每个得分点，禁止使用 • 字符。
+3. 每个得分点末尾注明分值，例如 [1分]。
+4. 每个 ### 段落之间空一行。
+
+数学格式——重要：
+- 绝对不要把方程式和文字说明写在同一行。
+- 每个方程式或计算步骤单独占一行，使用展示数学模式：$$方程式$$
+- 只有单个变量或简单值才可以内联：$p = 1$
+- 每个推导箭头（⟹）必须另起新行。`,
 };
 
 export async function* streamSchemeAnswer(
@@ -201,6 +254,10 @@ ${langInstruction}`
 3. Explain each step with reasoning.
 4. Summarize the solution approach.
 5. Offer to clarify anything.
+
+INTERACTIVE QUIZ: To check the student's understanding, you MAY embed one quick multiple-choice question between steps using EXACTLY this single-line format (no line breaks inside):
+[QUIZ: <question text> | A) <option> | B) <option> | C) <option> | D) <option> | ANS:<A/B/C/D>]
+Rules: use at most once per response, only when it genuinely tests a key concept just explained, write the question and all options in the same language as your explanation.
 ${langInstruction}`;
 
   const contextPrompt = `Question context: ${JSON.stringify(questionContent)}\n\n${systemPrompt}`;
