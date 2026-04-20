@@ -57,6 +57,7 @@ model Session {
   completed     Boolean     @default(false)
   schemeAnswer  String?
   correctLetter String?
+  notes         String?
   pdfUrl        String?
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt

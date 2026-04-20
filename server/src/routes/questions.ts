@@ -2,6 +2,7 @@ import { Router, Response, NextFunction } from 'express';
 import { requireAuth, AuthedRequest } from '../middleware/auth';
 import { prisma } from '../prisma/client';
 import { createError } from '../middleware/errorHandler';
+import { PLAN_LIMITS, PlanTier } from '../config/plans';
 
 const router = Router();
 
@@ -12,14 +13,17 @@ router.get('/', requireAuth, async (req, res: Response, next: NextFunction) => {
     const limit = Math.min(parseInt((req.query.limit as string) ?? '20'), 50);
     const skip = (page - 1) * limit;
 
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { planTier: true } });
+    const historyDays = PLAN_LIMITS[(user?.planTier ?? 'FREE') as PlanTier].historyDays;
+    const dateFilter = historyDays < Infinity
+      ? { gte: new Date(Date.now() - historyDays * 24 * 60 * 60 * 1000) }
+      : undefined;
+
+    const where = { userId, ...(dateFilter ? { createdAt: dateFilter } : {}) };
+
     const [questions, total] = await Promise.all([
-      prisma.question.findMany({
-        where: { userId },
-        orderBy: { createdAt: 'desc' },
-        skip,
-        take: limit,
-      }),
-      prisma.question.count({ where: { userId } }),
+      prisma.question.findMany({ where, orderBy: { createdAt: 'desc' }, skip, take: limit }),
+      prisma.question.count({ where }),
     ]);
 
     res.json({ questions, total, page, limit });

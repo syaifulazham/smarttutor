@@ -11,15 +11,7 @@ const LANGUAGE_OUTPUT: Record<string, string> = {
   zh: '将所有文本字段（questionText、组件文本、选项）用普通话（简体中文）书写。',
 };
 
-function buildParsePrompt(language = 'en'): string {
-  const langInstruction = LANGUAGE_OUTPUT[language] ?? LANGUAGE_OUTPUT['en'];
-  return `You are an expert at parsing academic questions from any source.
-Given an image or text, extract and structure the question.
-
-${langInstruction}
-
-Return ONLY a raw JSON object (no markdown, no code fences):
-{
+const QUESTION_OBJECT_SHAPE = `{
   "questionText": "clean question text with proper formatting",
   "type": "multiple_choice | short_answer | long_answer | calculation | diagram_based",
   "subject": "Mathematics | Physics | Chemistry | Biology | History | etc",
@@ -33,10 +25,56 @@ Return ONLY a raw JSON object (no markdown, no code fences):
     { "type": "options", "items": ["A. ...", "B. ...", "C. ...", "D. ..."] }
   ],
   "tags": ["algebra", "quadratic"]
-}
+}`;
+
+function buildParsePrompt(language = 'en'): string {
+  const langInstruction = LANGUAGE_OUTPUT[language] ?? LANGUAGE_OUTPUT['en'];
+  return `You are an expert at parsing academic questions from any source.
+Given an image or text, extract and structure the question.
+
+${langInstruction}
+
+Return ONLY a raw JSON object (no markdown, no code fences):
+${QUESTION_OBJECT_SHAPE}
 
 Use LaTeX for ALL mathematical expressions.
 For diagrams, output VALID Mermaid.js syntax (e.g. graph TD, flowchart LR, sequenceDiagram) — not plain English descriptions. If the diagram cannot be represented in Mermaid, omit the component entirely.`;
+}
+
+function buildMultiParsePrompt(language = 'en'): string {
+  const langInstruction = LANGUAGE_OUTPUT[language] ?? LANGUAGE_OUTPUT['en'];
+  return `You are an academic question parser for a student tutoring platform.
+
+STEP 1 — ACADEMIC VALIDATION:
+Determine whether the input contains genuine academic or educational content.
+ACCEPT: exam questions, homework problems, textbook exercises, scientific/mathematical problems, essay prompts, history/geography/language questions, and similar educational material.
+REJECT: selfies, memes, casual photos, food/nature images, unrelated text, advertisements, chat messages, or any non-educational content.
+
+STEP 2 — SPLITTING RULES (only if academic):
+- If the input contains multiple INDEPENDENT main questions (e.g. "Question 1", "Question 2", separate numbered problems), split each into its own object.
+- Sub-parts (a), (b), (c)… within the same main question are NOT separate questions. Keep them together in one object.
+- If there is only one main question, return an array with exactly one object.
+
+${langInstruction}
+
+Return ONLY a raw JSON object (no markdown, no code fences):
+
+If NOT academic:
+{
+  "isAcademic": false,
+  "reason": "brief explanation of why this was rejected"
+}
+
+If academic:
+{
+  "isAcademic": true,
+  "questions": [
+    ${QUESTION_OBJECT_SHAPE}
+  ]
+}
+
+Use LaTeX for ALL mathematical expressions.
+For diagrams, output VALID Mermaid.js syntax. If a diagram cannot be represented in Mermaid, omit the component entirely.`;
 }
 
 const parsedContentSchema = z.object({
@@ -88,6 +126,69 @@ async function enrichDiagrams(
   );
 
   return { ...parsed, components };
+}
+
+const parsedContentArraySchema = z.array(parsedContentSchema);
+
+const multiParseResponseSchema = z.object({
+  isAcademic: z.boolean(),
+  reason: z.string().optional(),
+  questions: z.array(parsedContentSchema).optional(),
+});
+
+export class NonAcademicError extends Error {
+  constructor(reason: string) {
+    super(reason);
+    this.name = 'NonAcademicError';
+  }
+}
+
+function validateAcademicResponse(raw: string): ParsedContent[] {
+  const parsed = multiParseResponseSchema.parse(JSON.parse(raw));
+  if (!parsed.isAcademic) {
+    throw new NonAcademicError(parsed.reason ?? 'Content does not appear to be an academic question.');
+  }
+  return parsedContentArraySchema.parse(parsed.questions ?? []) as ParsedContent[];
+}
+
+export async function parseQuestionsFromText(text: string, language = 'en'): Promise<ParsedContent[]> {
+  const result = await model.generateContent([
+    buildMultiParsePrompt(language),
+    `Parse all questions from this input:\n\n${text}`,
+  ]);
+  const questions = validateAcademicResponse(stripJsonFences(result.response.text()));
+  return Promise.all(questions.map((q) => enrichDiagrams(q)));
+}
+
+export async function parseQuestionsFromImage(
+  imageBase64: string,
+  mimeType: string,
+  imageUrl?: string,
+  language = 'en'
+): Promise<ParsedContent[]> {
+  const imagePart: Part = { inlineData: { data: imageBase64, mimeType } };
+  const result = await model.generateContent([
+    buildMultiParsePrompt(language),
+    'Parse all academic questions from this image:',
+    imagePart,
+  ]);
+
+  let questions = validateAcademicResponse(stripJsonFences(result.response.text()));
+
+  // Inject source image reference into first question only
+  if (imageUrl) {
+    questions = questions.map((q, i) => {
+      if (i !== 0) return q;
+      const hasImageRef = q.components.some((c) => c.type === 'image_reference');
+      const components = q.components.map((c) =>
+        c.type === 'image_reference' ? { ...c, url: imageUrl } : c
+      );
+      if (!hasImageRef) components.unshift({ type: 'image_reference', url: imageUrl, caption: 'Source image' });
+      return { ...q, components };
+    });
+  }
+
+  return Promise.all(questions.map((q) => enrichDiagrams(q, imageBase64, mimeType)));
 }
 
 export async function parseQuestionFromText(text: string, language = 'en'): Promise<ParsedContent> {
@@ -232,23 +333,55 @@ const LANGUAGE_INSTRUCTIONS: Record<string, string> = {
   zh: '请全程使用普通话（简体中文）回答。',
 };
 
+const AVATAR_PERSONALITY: Record<string, string> = {
+  ayu: `Your name is Ayu. You are warm, gentle, and deeply encouraging.
+Speak like a caring friend — use soft, reassuring language. Celebrate small wins. If the student is wrong, never make them feel bad; instead say "Tak apa, jom cuba lagi!" or similar.
+Use a natural mix of Bahasa Melayu and English. Keep sentences short and friendly. Add occasional warmth emojis (💙✨) but don't overdo it.`,
+
+  sara: `Your name is Ms. Sara. You are patient, calm, and supportive.
+Never rush. Break every explanation into the smallest possible steps. If a student seems confused, slow down even further and use different words.
+Speak in measured, reassuring English. Occasionally affirm the student: "You're doing well", "That's a good question". Avoid slang. Maintain a gentle teacher tone throughout.`,
+
+  rajan: `Your name is Mr. Rajan. You are high-energy, enthusiastic, and love breaking problems into steps.
+Use exclamation marks freely! You get genuinely excited about correct answers. Hype the student up.
+Mix Bahasa Melayu and English energetically. Use phrases like "Jom jom!", "YES! Betul tu!", "Okay NEXT step—". Keep the energy up throughout the explanation. Make learning feel like an adventure.`,
+
+  chen: `Your name is Dr. Chen. You are precise, methodical, and academically rigorous.
+Always structure your response formally: define terms, state assumptions, then solve step by step.
+Use only English. No emojis. No filler phrases. Every sentence must add information. Reference laws, theorems, or formulas by name when applicable. Conclude with a concise summary statement.`,
+
+  alex: `Your name is Alex. You are fast, direct, and no-nonsense.
+Get to the point immediately — no greetings, no preamble. Use short sentences. Bullet points where possible.
+Skip pleasantries entirely. If the student is wrong, say so plainly and give the correction. Aim to deliver the answer in as few words as possible without sacrificing accuracy.`,
+
+  maya: `Your name is Maya. You are a creative problem-solver who loves finding unexpected angles.
+Don't follow the textbook path if a more intuitive or visual approach exists. Use analogies, real-world examples, and "what if" thinking to make concepts click.
+Mix Bahasa Melayu and English playfully. Encourage the student to think differently. Phrase things like "Okay, imagine it this way..." or "Cuba fikir macam ni...". Make the explanation memorable, not just correct.`,
+};
+
 export async function* streamTutorResponse(
   messages: Array<{ role: string; content: string; timestamp: string }>,
   mode: 'SELF_ATTEMPT' | 'DIRECT_EXPLANATION',
   questionContent: object,
-  language = 'en'
+  language = 'en',
+  avatarId = 'ayu'
 ): AsyncGenerator<string> {
   const langInstruction = LANGUAGE_INSTRUCTIONS[language] ?? LANGUAGE_INSTRUCTIONS['en'];
+  const personalityInstruction = AVATAR_PERSONALITY[avatarId] ?? AVATAR_PERSONALITY['ayu'];
 
   const systemPrompt =
     mode === 'SELF_ATTEMPT'
-      ? `You are an encouraging tutor. The student wants to attempt the question themselves.
+      ? `${personalityInstruction}
+
+The student wants to attempt the question themselves.
 1. Present the question clearly if this is the start.
 2. Accept their answer when provided.
 3. Review it: highlight what's correct, what's wrong, guide to the correct answer.
 4. Give a score out of 100 and a clear explanation.
 ${langInstruction}`
-      : `You are a clear, step-by-step tutor.
+      : `${personalityInstruction}
+
+Explain the question step by step according to your personality above.
 1. Acknowledge the question.
 2. Break it into steps.
 3. Explain each step with reasoning.

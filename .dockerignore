@@ -1,0 +1,40 @@
+# VCS
+.git
+.github
+.gitignore
+
+# Deps (rebuilt inside Docker)
+node_modules
+**/node_modules
+
+# Build outputs
+dist
+**/dist
+apps/web/dist
+
+# Dev / test files
+*.test.ts
+*.spec.ts
+**/__tests__
+*.md
+
+# Local env files
+.env
+*.env
+local.env
+server/.env
+
+# Uploads (mounted as volume)
+server/uploads
+uploads
+
+# Logs
+*.log
+npm-debug.log*
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode
+.idea

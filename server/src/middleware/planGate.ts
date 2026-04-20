@@ -102,6 +102,29 @@ export async function sessionGate(req: AuthedRequest, res: Response, next: NextF
   }
 }
 
+// Middleware: enforce notes access (Cerdas + Cemerlang only)
+export async function notesGate(req: AuthedRequest, res: Response, next: NextFunction) {
+  try {
+    const { userId } = req;
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { planTier: true },
+    });
+    if (!user) return next(createError('User not found', 404));
+
+    if (user.planTier === 'FREE') {
+      return res.status(403).json({
+        error: 'Session notes require a Cerdas or Cemerlang plan.',
+        upgradeRequired: true,
+        currentPlan: user.planTier,
+      });
+    }
+    next();
+  } catch (err) {
+    next(err);
+  }
+}
+
 // Middleware: enforce marking scheme access
 export async function schemeGate(req: AuthedRequest, res: Response, next: NextFunction) {
   try {

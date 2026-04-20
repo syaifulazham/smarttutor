@@ -84,6 +84,11 @@ export async function completeSession(sessionId: string) {
   return data;
 }
 
+export async function saveSessionNotes(sessionId: string, notes: string) {
+  const { data } = await api.patch(`/sessions/${sessionId}/notes`, { notes });
+  return data as { notes: string };
+}
+
 export async function deleteSession(sessionId: string) {
   const { data } = await api.delete(`/sessions/${sessionId}`);
   return data;
@@ -108,4 +113,10 @@ export async function createCheckoutSession(tier: 'CERDAS' | 'CEMERLANG') {
 export async function openCustomerPortal() {
   const { data } = await api.post('/billing/portal');
   return data as { url: string };
+}
+
+// ─── Export ───────────────────────────────────────────────────────────────────
+export async function exportSessionsPdf(sessionIds: string[]): Promise<Blob> {
+  const response = await api.post('/export/pdf', { sessionIds }, { responseType: 'blob' });
+  return response.data as Blob;
 }

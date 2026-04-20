@@ -5,7 +5,7 @@ import path from 'path';
 import { randomUUID } from 'crypto';
 import { requireAuth, AuthedRequest } from '../middleware/auth';
 import { prisma } from '../prisma/client';
-import { parseQuestionFromText, parseQuestionFromImage } from '../services/ai/geminiService';
+import { parseQuestionsFromText, parseQuestionsFromImage, NonAcademicError } from '../services/ai/geminiService';
 import { createError } from '../middleware/errorHandler';
 import { captureGate } from '../middleware/planGate';
 import { z } from 'zod';
@@ -51,27 +51,36 @@ router.post('/text', requireAuth, captureGate, async (req, res: Response, next: 
     const { text } = textInputSchema.parse(req.body);
     const language = ['en', 'ms', 'zh'].includes(req.body.language) ? req.body.language : 'en';
 
-    const parsedContent = await parseQuestionFromText(text, language);
+    let parsedList;
+    try {
+      parsedList = await parseQuestionsFromText(text, language);
+    } catch (err) {
+      if (err instanceof NonAcademicError) {
+        return res.status(422).json({ error: err.message, nonAcademic: true });
+      }
+      throw err;
+    }
 
-    const title = safeSliceTitle(parsedContent.questionText.replace(/\s+/g, ' ').trim(), 100);
-
-    const [question] = await prisma.$transaction([
-      prisma.question.create({
-        data: {
-          userId,
-          sourceType: 'TEXT',
-          title,
-          rawInput: text,
-          parsedContent,
-          subject: parsedContent.subject,
-          difficulty: parsedContent.difficulty,
-          tags: parsedContent.tags,
-        },
-      }),
-      prisma.user.update({ where: { id: userId }, data: { capturesUsed: { increment: 1 } } }),
+    const questions = await prisma.$transaction([
+      ...parsedList.map((parsedContent) =>
+        prisma.question.create({
+          data: {
+            userId,
+            sourceType: 'TEXT',
+            title: safeSliceTitle(parsedContent.questionText.replace(/\s+/g, ' ').trim(), 100),
+            rawInput: text,
+            parsedContent,
+            subject: parsedContent.subject,
+            difficulty: parsedContent.difficulty,
+            tags: parsedContent.tags,
+          },
+        })
+      ),
+      prisma.user.update({ where: { id: userId }, data: { capturesUsed: { increment: parsedList.length } } }),
     ]);
 
-    res.status(201).json(question);
+    // Last item in transaction result is the user update — strip it
+    res.status(201).json(questions.slice(0, parsedList.length));
   } catch (err) {
     next(err);
   }
@@ -99,27 +108,35 @@ router.post(
       const imageUrl = `/uploads/${filename}`;
 
       const language = ['en', 'ms', 'zh'].includes(req.body.language) ? req.body.language : 'en';
-      const parsedContent = await parseQuestionFromImage(imageBase64, mimeType, imageUrl, language);
+      let parsedList;
+      try {
+        parsedList = await parseQuestionsFromImage(imageBase64, mimeType, imageUrl, language);
+      } catch (err) {
+        if (err instanceof NonAcademicError) {
+          return res.status(422).json({ error: err.message, nonAcademic: true });
+        }
+        throw err;
+      }
 
-      const title = safeSliceTitle(parsedContent.questionText.replace(/\s+/g, ' ').trim(), 100);
-
-      const [question] = await prisma.$transaction([
-        prisma.question.create({
-          data: {
-            userId,
-            sourceType: 'IMAGE',
-            title,
-            imageUrl,
-            parsedContent,
-            subject: parsedContent.subject,
-            difficulty: parsedContent.difficulty,
-            tags: parsedContent.tags,
-          },
-        }),
-        prisma.user.update({ where: { id: userId }, data: { capturesUsed: { increment: 1 } } }),
+      const results = await prisma.$transaction([
+        ...parsedList.map((parsedContent) =>
+          prisma.question.create({
+            data: {
+              userId,
+              sourceType: 'IMAGE',
+              title: safeSliceTitle(parsedContent.questionText.replace(/\s+/g, ' ').trim(), 100),
+              imageUrl,
+              parsedContent,
+              subject: parsedContent.subject,
+              difficulty: parsedContent.difficulty,
+              tags: parsedContent.tags,
+            },
+          })
+        ),
+        prisma.user.update({ where: { id: userId }, data: { capturesUsed: { increment: parsedList.length } } }),
       ]);
 
-      res.status(201).json(question);
+      res.status(201).json(results.slice(0, parsedList.length));
     } catch (err) {
       next(err);
     }

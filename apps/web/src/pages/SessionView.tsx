@@ -11,7 +11,7 @@ import remarkGfm from 'remark-gfm';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
 import { useNavigate } from 'react-router-dom';
-import { getSession, completeSession, deleteSession } from '@/services/api';
+import { getSession, completeSession, deleteSession, saveSessionNotes } from '@/services/api';
 import { useAuthStore } from '@/store/authStore';
 import { preprocessMath, stripOuterCodeFence, normalizeSchemeMarkdown } from '@/utils/preprocessMath';
 import QuestionRenderer from '@/components/question/QuestionRenderer';
@@ -486,6 +486,7 @@ export default function SessionView() {
   const queryClient = useQueryClient();
   const { language } = useLanguageStore();
   const { avatar } = useAvatarStore();
+  const planTier = useAuthStore((s) => s.user?.planTier ?? 'FREE');
   const speech = useSpeech();
   const [showAvatarPicker, setShowAvatarPicker] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -494,6 +495,9 @@ export default function SessionView() {
   const [streaming, setStreaming] = useState(false);
   const [streamingText, setStreamingText] = useState('');
   const [localMessages, setLocalMessages] = useState<ChatMessage[]>([]);
+  const [notes, setNotes] = useState('');
+  const [notesSaveStatus, setNotesSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const notesTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const { data: session, isLoading } = useQuery({
@@ -519,11 +523,29 @@ export default function SessionView() {
     if (session?.messages) {
       setLocalMessages(session.messages as ChatMessage[]);
     }
+    if (session?.notes != null) {
+      setNotes(session.notes);
+    }
   }, [session]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [localMessages, streamingText]);
+
+  function handleNotesChange(value: string) {
+    setNotes(value);
+    setNotesSaveStatus('saving');
+    if (notesTimerRef.current) clearTimeout(notesTimerRef.current);
+    notesTimerRef.current = setTimeout(async () => {
+      try {
+        await saveSessionNotes(id!, value);
+        setNotesSaveStatus('saved');
+        setTimeout(() => setNotesSaveStatus('idle'), 2000);
+      } catch {
+        setNotesSaveStatus('idle');
+      }
+    }, 1200);
+  }
 
   async function sendMessage(override?: string) {
     const text = override ?? input;
@@ -542,7 +564,7 @@ export default function SessionView() {
         'Content-Type': 'application/json',
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
-      body: JSON.stringify({ content: text, language }),
+      body: JSON.stringify({ content: text, language, avatarId: avatar.id }),
     });
 
     const reader = res.body?.getReader();
@@ -595,6 +617,33 @@ export default function SessionView() {
           <p>Mode: <span className="font-medium">{session.mode === 'SELF_ATTEMPT' ? 'Self Attempt' : 'Explanation'}</span></p>
           <p>Status: <span className={`font-medium ${session.completed ? 'text-green-600' : 'text-yellow-600'}`}>{session.completed ? 'Completed' : 'In Progress'}</span></p>
         </div>
+        {/* Notes panel */}
+        <div className="mt-4 pt-4 border-t border-gray-100">
+          <div className="flex items-center justify-between mb-1.5">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">My Notes</p>
+            {planTier !== 'FREE' && (
+              <span className="text-[10px] text-gray-400">
+                {notesSaveStatus === 'saving' && 'Saving…'}
+                {notesSaveStatus === 'saved' && <span className="text-green-500">Saved ✓</span>}
+              </span>
+            )}
+          </div>
+          {planTier === 'FREE' ? (
+            <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 p-3 text-center">
+              <p className="text-xs text-gray-400 mb-1.5">Notes available on Cerdas &amp; Cemerlang</p>
+              <a href="/pricing" className="text-xs font-semibold text-primary-600 hover:underline">Upgrade plan →</a>
+            </div>
+          ) : (
+            <textarea
+              value={notes}
+              onChange={(e) => handleNotesChange(e.target.value)}
+              placeholder="Tulis nota anda di sini… / Write your notes here…"
+              rows={5}
+              className="w-full text-xs text-gray-700 placeholder-gray-300 bg-gray-50 border border-gray-200 rounded-lg p-2.5 resize-none focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-transparent leading-relaxed"
+            />
+          )}
+        </div>
+
         {!session.completed && (
           <button
             onClick={() => completeMutation.mutate()}

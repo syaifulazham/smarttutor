@@ -1,0 +1,55 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: smarttutor
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d smarttutor"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    # NOT exposed externally — only accessible inside Docker network
+
+  server:
+    image: ${SERVER_IMAGE}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/smarttutor
+      FRONTEND_URL: ${FRONTEND_URL}
+      JWT_SECRET: ${JWT_SECRET}
+      SESSION_SECRET: ${SESSION_SECRET}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      GOOGLE_CALLBACK_URL: ${GOOGLE_CALLBACK_URL}
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
+      STRIPE_CERDAS_PRICE_ID: ${STRIPE_CERDAS_PRICE_ID}
+      STRIPE_CEMERLANG_PRICE_ID: ${STRIPE_CEMERLANG_PRICE_ID}
+      PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: "true"
+      PUPPETEER_EXECUTABLE_PATH: /usr/bin/chromium
+    volumes:
+      - uploads_data:/app/uploads
+    # NOT exposed externally — nginx proxies to it
+
+  web:
+    image: ${WEB_IMAGE}
+    restart: unless-stopped
+    depends_on:
+      - server
+    ports:
+      - "80:80"
+
+volumes:
+  postgres_data:
+  uploads_data:
