@@ -1,6 +1,6 @@
 import { GoogleGenerativeAI, Part } from '@google/generative-ai';
 import { z } from 'zod';
-import { ParsedContent } from '../../../../packages/shared/types/question';
+import { ParsedContent } from '../../types/question';
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY ?? '');
 const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });

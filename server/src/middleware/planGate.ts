@@ -1,4 +1,4 @@
-import { Response, NextFunction } from 'express';
+import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../prisma/client';
 import { PLAN_LIMITS, PlanTier } from '../config/plans';
 import { AuthedRequest } from './auth';
@@ -22,9 +22,9 @@ async function maybeResetCycle(userId: string) {
 }
 
 // Middleware: enforce capture limits and image/language restrictions
-export async function captureGate(req: AuthedRequest, res: Response, next: NextFunction) {
+export async function captureGate(req: Request, res: Response, next: NextFunction) {
   try {
-    const { userId } = req;
+    const { userId } = req as AuthedRequest;
     await maybeResetCycle(userId);
 
     const user = await prisma.user.findUnique({
@@ -73,9 +73,9 @@ export async function captureGate(req: AuthedRequest, res: Response, next: NextF
 }
 
 // Middleware: enforce session limits
-export async function sessionGate(req: AuthedRequest, res: Response, next: NextFunction) {
+export async function sessionGate(req: Request, res: Response, next: NextFunction) {
   try {
-    const { userId } = req;
+    const { userId } = req as AuthedRequest;
     await maybeResetCycle(userId);
 
     const user = await prisma.user.findUnique({
@@ -103,9 +103,9 @@ export async function sessionGate(req: AuthedRequest, res: Response, next: NextF
 }
 
 // Middleware: enforce notes access (Cerdas + Cemerlang only)
-export async function notesGate(req: AuthedRequest, res: Response, next: NextFunction) {
+export async function notesGate(req: Request, res: Response, next: NextFunction) {
   try {
-    const { userId } = req;
+    const { userId } = req as AuthedRequest;
     const user = await prisma.user.findUnique({
       where: { id: userId },
       select: { planTier: true },
@@ -126,9 +126,9 @@ export async function notesGate(req: AuthedRequest, res: Response, next: NextFun
 }
 
 // Middleware: enforce marking scheme access
-export async function schemeGate(req: AuthedRequest, res: Response, next: NextFunction) {
+export async function schemeGate(req: Request, res: Response, next: NextFunction) {
   try {
-    const { userId } = req;
+    const { userId } = req as AuthedRequest;
     const user = await prisma.user.findUnique({
       where: { id: userId },
       select: { planTier: true },

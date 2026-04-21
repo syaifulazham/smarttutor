@@ -144,7 +144,7 @@ export async function handleWebhook(req: Request, res: Response) {
   const sig = req.headers['stripe-signature'] as string;
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET ?? '';
 
-  let event: Stripe.Event;
+  let event: ReturnType<typeof stripe.webhooks.constructEvent>;
   try {
     event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
   } catch (err) {
@@ -155,7 +155,7 @@ export async function handleWebhook(req: Request, res: Response) {
   try {
     switch (event.type) {
       case 'checkout.session.completed': {
-        const session = event.data.object as Stripe.Checkout.Session;
+        const session = event.data.object as any;
         const userId = session.metadata?.userId;
         const tier = session.metadata?.tier as 'CERDAS' | 'CEMERLANG';
         const subscriptionId = session.subscription as string;
@@ -176,7 +176,7 @@ export async function handleWebhook(req: Request, res: Response) {
 
       case 'invoice.payment_succeeded': {
         // Monthly renewal — reset usage counters
-        const invoice = event.data.object as Stripe.Invoice;
+        const invoice = event.data.object as any;
         const subscriptionId = typeof invoice.subscription === 'string'
           ? invoice.subscription
           : invoice.subscription?.id;
@@ -194,7 +194,7 @@ export async function handleWebhook(req: Request, res: Response) {
       }
 
       case 'customer.subscription.updated': {
-        const subscription = event.data.object as Stripe.Subscription;
+        const subscription = event.data.object as any;
         const tier = subscription.metadata?.tier as 'CERDAS' | 'CEMERLANG' | undefined;
         if (tier) {
           await prisma.user.updateMany({
@@ -206,7 +206,7 @@ export async function handleWebhook(req: Request, res: Response) {
       }
 
       case 'customer.subscription.deleted': {
-        const subscription = event.data.object as Stripe.Subscription;
+        const subscription = event.data.object as any;
         await prisma.user.updateMany({
           where: { stripeSubscriptionId: subscription.id },
           data: {
