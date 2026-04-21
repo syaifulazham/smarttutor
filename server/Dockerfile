@@ -24,6 +24,10 @@ RUN pnpm --filter server exec prisma generate
 # Compile TypeScript
 RUN pnpm --filter server run build
 
+# Create a flat, symlink-free node_modules for the runner (pnpm deploy resolves
+# the virtual store symlinks into a real directory structure)
+RUN pnpm --filter server deploy --prod /deploy
+
 
 # ── Stage 2: Runtime ──────────────────────────────────────────────────────────
 FROM node:20-slim AS runner
@@ -57,20 +61,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
-# Install pnpm for production install
-RUN npm install -g pnpm@latest --quiet
-
 # Copy built artefacts from builder
-COPY --from=builder /app/server/dist          ./dist
-COPY --from=builder /app/server/prisma        ./prisma
-COPY --from=builder /app/server/package.json  ./package.json
-COPY --from=builder /app/pnpm-workspace.yaml  ./pnpm-workspace.yaml
-COPY --from=builder /app/package.json         ./root-package.json
+COPY --from=builder /app/server/dist   ./dist
+COPY --from=builder /app/server/prisma ./prisma
 
-# Copy pnpm virtual store first (symlinks in server/node_modules point here)
-COPY --from=builder /app/node_modules/.pnpm   ./node_modules/.pnpm
-# Then copy server node_modules (contains symlinks into .pnpm)
-COPY --from=builder /app/server/node_modules  ./node_modules
+# Flat node_modules from pnpm deploy (no symlinks, no virtual store issues)
+COPY --from=builder /deploy/node_modules ./node_modules
 
 # Persistent uploads directory (mount as volume in production)
 RUN mkdir -p /app/uploads
