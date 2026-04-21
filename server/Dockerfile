@@ -28,6 +28,9 @@ RUN pnpm --filter server run build
 # the virtual store symlinks into a real directory structure)
 RUN pnpm --filter server deploy --prod --legacy /deploy
 
+# Copy generated Prisma client — pnpm deploy omits .prisma (generated, not a package)
+RUN cp -r /app/node_modules/.prisma /deploy/node_modules/.prisma
+
 
 # ── Stage 2: Runtime ──────────────────────────────────────────────────────────
 FROM node:20-slim AS runner
