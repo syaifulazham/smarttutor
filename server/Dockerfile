@@ -26,7 +26,7 @@ RUN pnpm --filter server run build
 
 # Create a flat, symlink-free node_modules for the runner (pnpm deploy resolves
 # the virtual store symlinks into a real directory structure)
-RUN pnpm --filter server deploy --prod /deploy
+RUN pnpm --filter server deploy --prod --legacy /deploy
 
 
 # ── Stage 2: Runtime ──────────────────────────────────────────────────────────
