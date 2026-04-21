@@ -67,7 +67,9 @@ COPY --from=builder /app/server/package.json  ./package.json
 COPY --from=builder /app/pnpm-workspace.yaml  ./pnpm-workspace.yaml
 COPY --from=builder /app/package.json         ./root-package.json
 
-# Install production-only deps in the final image
+# Copy pnpm virtual store first (symlinks in server/node_modules point here)
+COPY --from=builder /app/node_modules/.pnpm   ./node_modules/.pnpm
+# Then copy server node_modules (contains symlinks into .pnpm)
 COPY --from=builder /app/server/node_modules  ./node_modules
 
 # Persistent uploads directory (mount as volume in production)
