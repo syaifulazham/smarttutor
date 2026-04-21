@@ -258,7 +258,7 @@ function SteppedMessage({ content, messageIndex, speech, language, parsedContent
   useEffect(() => {
     if (!isLastMessage) return;
     const token = useAuthStore.getState().token;
-    const headers = token ? { Authorization: `Bearer ${token}` } : {};
+    const headers: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {};
     fetch(`/api/sessions/${sessionId}`, { headers })
       .then(r => r.json())
       .then((s) => {

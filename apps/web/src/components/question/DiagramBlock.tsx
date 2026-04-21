@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import mermaid from 'mermaid';
 
-mermaid.initialize({ startOnLoad: false, theme: 'neutral', suppressErrors: true });
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+mermaid.initialize({ startOnLoad: false, theme: 'neutral', suppressErrors: true } as any);
 let mermaidCounter = 0;
 
 const VALID_DIAGRAM_TYPES = /^\s*(graph|flowchart|sequenceDiagram|classDiagram|stateDiagram|erDiagram|gantt|pie|journey|gitGraph|mindmap|timeline|quadrantChart|xychart)/i;
