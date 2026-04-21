@@ -41,33 +41,16 @@ services:
       PUPPETEER_EXECUTABLE_PATH: /usr/bin/chromium
     volumes:
       - uploads_data:/app/uploads
-    # NOT exposed externally — nginx proxies to it
+    # NOT exposed externally — host nginx proxies to it
 
   web:
     image: ${WEB_IMAGE}
     restart: unless-stopped
     depends_on:
       - server
-    # No published ports — Caddy proxies to it on the internal network
-
-  caddy:
-    image: caddy:2-alpine
-    restart: unless-stopped
-    depends_on:
-      - web
-    environment:
-      DOMAIN: ${DOMAIN}
     ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp"   # HTTP/3
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data           # certificates + ACME account
-      - caddy_config:/config
+      - "127.0.0.1:8080:80"   # bind to localhost only — host nginx proxies here
 
 volumes:
   postgres_data:
   uploads_data:
-  caddy_data:
-  caddy_config:
