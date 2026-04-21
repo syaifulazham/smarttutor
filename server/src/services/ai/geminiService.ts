@@ -5,6 +5,15 @@ import { ParsedContent } from '../../../../packages/shared/types/question';
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY ?? '');
 const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
+// Lower-temperature model instance for factual tutoring — reduces hallucination
+const tutorModel = genAI.getGenerativeModel({
+  model: 'gemini-2.5-flash',
+  generationConfig: {
+    temperature: 0.4,
+    topP: 0.85,
+  },
+});
+
 const LANGUAGE_OUTPUT: Record<string, string> = {
   en: 'Write ALL text fields (questionText, component text, options) in English.',
   ms: 'Tulis SEMUA medan teks (questionText, teks komponen, pilihan jawapan) dalam Bahasa Melayu.',
@@ -315,7 +324,11 @@ export async function* streamSchemeAnswer(
   language = 'en'
 ): AsyncGenerator<string> {
   const prompt = SCHEME_PROMPT[language] ?? SCHEME_PROMPT['en'];
-  const stream = await model.generateContentStream([
+  const schemeModel = genAI.getGenerativeModel({
+    model: 'gemini-2.5-flash',
+    generationConfig: { temperature: 0.2, topP: 0.8 },
+  });
+  const stream = await schemeModel.generateContentStream([
     prompt,
     `Question: ${JSON.stringify(questionContent)}`,
     'Provide the model answer / marking scheme now:',
@@ -369,6 +382,10 @@ export async function* streamTutorResponse(
   const langInstruction = LANGUAGE_INSTRUCTIONS[language] ?? LANGUAGE_INSTRUCTIONS['en'];
   const personalityInstruction = AVATAR_PERSONALITY[avatarId] ?? AVATAR_PERSONALITY['ayu'];
 
+  const groundingRule = `FACTUAL ACCURACY — critical:
+Base every explanation step strictly on the question content provided. Do not introduce values, formulas, definitions, or facts not present in or directly derivable from the question. If uncertain about a step, say so rather than guessing.
+This rule applies to explanations only — Quick Check quiz distractors may include plausible but incorrect alternatives to test understanding.`;
+
   const systemPrompt =
     mode === 'SELF_ATTEMPT'
       ? `${personalityInstruction}
@@ -378,6 +395,7 @@ The student wants to attempt the question themselves.
 2. Accept their answer when provided.
 3. Review it: highlight what's correct, what's wrong, guide to the correct answer.
 4. Give a score out of 100 and a clear explanation.
+${groundingRule}
 ${langInstruction}`
       : `${personalityInstruction}
 
@@ -391,12 +409,13 @@ Explain the question step by step according to your personality above.
 INTERACTIVE QUIZ: To check the student's understanding, you MAY embed one quick multiple-choice question between steps using EXACTLY this single-line format (no line breaks inside):
 [QUIZ: <question text> | A) <option> | B) <option> | C) <option> | D) <option> | ANS:<A/B/C/D>]
 Rules: use at most once per response, only when it genuinely tests a key concept just explained, write the question and all options in the same language as your explanation.
+${groundingRule}
 ${langInstruction}`;
 
   const contextPrompt = `Question context: ${JSON.stringify(questionContent)}\n\n${systemPrompt}`;
 
   // Build chat history for Gemini
-  const chat = model.startChat({
+  const chat = tutorModel.startChat({
     history: [
       { role: 'user', parts: [{ text: contextPrompt }] },
       { role: 'model', parts: [{ text: 'Understood. I am ready to help as your tutor.' }] },

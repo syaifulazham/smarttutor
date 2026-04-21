@@ -1,12 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useRef } from 'react';
+import { api } from '../services/api';
+import { useAvatarStore } from '../store/avatarStore';
 
 export type SpeechLang = 'en' | 'ms' | 'zh';
-
-const LANG_MAP: Record<SpeechLang, string> = {
-  en: 'en-US',
-  ms: 'ms-MY',
-  zh: 'zh-CN',
-};
 
 // Strip markdown/LaTeX to plain speakable text
 function toSpeakable(md: string): string {
@@ -28,40 +24,60 @@ function toSpeakable(md: string): string {
 }
 
 export function useSpeech() {
+  const { avatar } = useAvatarStore();
   const [activeId, setActiveId] = useState<string | null>(null);
-  const supported = typeof window !== 'undefined' && 'speechSynthesis' in window;
+  const [loading, setLoading] = useState<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  // Tracks in-flight id synchronously — guards against double-click before re-render
+  const pendingRef = useRef<string | null>(null);
 
-  // Stop speech when component unmounts
-  useEffect(() => () => { if (supported) window.speechSynthesis.cancel(); }, [supported]);
+  function stop() {
+    pendingRef.current = null;
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.src = '';
+      audioRef.current = null;
+    }
+    setActiveId(null);
+    setLoading(null);
+  }
 
-  function speak(text: string, lang: SpeechLang, id: string) {
-    if (!supported) return;
-
+  async function speak(text: string, _lang: SpeechLang, id: string) {
     // Toggle off if already speaking this id
-    if (activeId === id) {
-      window.speechSynthesis.cancel();
-      setActiveId(null);
+    if (activeId === id || pendingRef.current === id) {
+      stop();
       return;
     }
 
-    window.speechSynthesis.cancel();
+    // Reject if another request is already in flight (stale-closure guard)
+    if (pendingRef.current !== null || activeId !== null) return;
 
-    const utterance = new SpeechSynthesisUtterance(toSpeakable(text));
-    utterance.lang = LANG_MAP[lang];
-    utterance.rate = 0.95;
-    utterance.pitch = 1;
+    pendingRef.current = id;
+    stop();
+    setLoading(id);
 
-    utterance.onstart = () => setActiveId(id);
-    utterance.onend = () => setActiveId(null);
-    utterance.onerror = () => setActiveId(null);
+    try {
+      const response = await api.post<Blob>(
+        '/tts',
+        { text: toSpeakable(text), avatarId: avatar.id },
+        { responseType: 'blob' },
+      );
 
-    window.speechSynthesis.speak(utterance);
+      const url = URL.createObjectURL(response.data);
+      const audio = new Audio(url);
+      audioRef.current = audio;
+
+      audio.onplay = () => { pendingRef.current = null; setLoading(null); setActiveId(id); };
+      audio.onended = () => { setActiveId(null); URL.revokeObjectURL(url); };
+      audio.onerror = () => { pendingRef.current = null; setActiveId(null); setLoading(null); URL.revokeObjectURL(url); };
+
+      await audio.play();
+    } catch {
+      pendingRef.current = null;
+      setLoading(null);
+      setActiveId(null);
+    }
   }
 
-  function stop() {
-    if (supported) window.speechSynthesis.cancel();
-    setActiveId(null);
-  }
-
-  return { speak, stop, activeId, supported };
+  return { speak, stop, activeId, loading, supported: true };
 }

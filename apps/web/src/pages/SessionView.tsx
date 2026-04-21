@@ -339,6 +339,7 @@ function SteppedMessage({ content, messageIndex, speech, language, parsedContent
         const isNew = pi === revealed - 1;
         const stepId = `msg-${messageIndex}-step-${pi}`;
         const isPlaying = speech.activeId === stepId;
+        const isLoading = speech.loading === stepId;
 
         return (
           <div
@@ -358,10 +359,13 @@ function SteppedMessage({ content, messageIndex, speech, language, parsedContent
               {speech.supported && (
                 <button
                   onClick={() => speech.speak(part, language, stepId)}
-                  title={isPlaying ? 'Stop' : 'Listen'}
+                  disabled={!isPlaying && (speech.loading !== null || speech.activeId !== null)}
+                  title={isPlaying ? 'Stop' : isLoading ? 'Loading…' : 'Listen'}
                   className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium border transition-all ${
                     isPlaying
                       ? 'bg-red-50 border-red-300 text-red-600 hover:bg-red-100'
+                      : isLoading
+                      ? 'bg-gray-50 border-gray-200 text-gray-400 cursor-wait'
                       : 'bg-white border-gray-300 text-gray-500 hover:border-primary-400 hover:text-primary-600 hover:bg-primary-50'
                   }`}
                 >
@@ -372,6 +376,14 @@ function SteppedMessage({ content, messageIndex, speech, language, parsedContent
                         <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500" />
                       </span>
                       Stop
+                    </>
+                  ) : isLoading ? (
+                    <>
+                      <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                      </svg>
+                      Loading…
                     </>
                   ) : (
                     <>
@@ -798,6 +810,14 @@ export default function SessionView() {
           >
             Send
           </button>
+        </div>
+        <div className="px-3 pb-2 flex items-start gap-1.5">
+          <svg className="w-3 h-3 text-amber-400 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+          </svg>
+          <p className="text-[10px] text-gray-400 leading-relaxed">
+            AI-generated explanations may contain errors. Always verify important answers with your textbook, teacher, or authoritative sources before use in exams or assignments.
+          </p>
         </div>
       </div>
     </div>

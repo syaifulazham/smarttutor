@@ -12,6 +12,7 @@ import captureRoutes from './routes/capture';
 import questionRoutes from './routes/questions';
 import sessionRoutes from './routes/sessions';
 import exportRoutes from './routes/export';
+import ttsRoutes from './routes/tts';
 import authRoutes from './routes/auth';
 import billingRoutes, { handleWebhook } from './routes/billing';
 import { errorHandler } from './middleware/errorHandler';
@@ -56,6 +57,7 @@ app.use('/api/capture', aiLimiter, captureRoutes);
 app.use('/api/sessions', aiLimiter, sessionRoutes);
 app.use('/api/questions', questionRoutes);
 app.use('/api/export', exportRoutes);
+app.use('/api/tts', aiLimiter, ttsRoutes);
 app.use('/api/billing', billingRoutes);
 
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
