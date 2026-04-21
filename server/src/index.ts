@@ -20,6 +20,9 @@ import { errorHandler } from './middleware/errorHandler';
 const app = express();
 const PORT = process.env.PORT ?? 3001;
 
+// Trust Cloudflare / nginx proxy — needed for correct protocol in OAuth redirects
+app.set('trust proxy', 1);
+
 // Ensure uploads dir exists
 const uploadsDir = path.join(__dirname, '..', 'uploads');
 fs.mkdirSync(uploadsDir, { recursive: true });
