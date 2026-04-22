@@ -26,6 +26,16 @@ export async function login(email: string, password: string) {
   return data;
 }
 
+export async function verifyEmail(token: string) {
+  const { data } = await api.get('/auth/verify-email', { params: { token } });
+  return data;
+}
+
+export async function resendVerification(email: string) {
+  const { data } = await api.post('/auth/resend-verification', { email });
+  return data;
+}
+
 export async function getMe() {
   const { data } = await api.get('/auth/me');
   return data;

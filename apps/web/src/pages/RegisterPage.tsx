@@ -1,16 +1,14 @@
 import { useState, FormEvent } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { register } from '@/services/api';
-import { useAuthStore } from '@/store/authStore';
 
 export default function RegisterPage() {
-  const navigate = useNavigate();
-  const setAuth = useAuthStore((s) => s.setAuth);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [registeredEmail, setRegisteredEmail] = useState('');
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -21,9 +19,8 @@ export default function RegisterPage() {
     }
     setLoading(true);
     try {
-      const { token, user } = await register(email, password, name || undefined);
-      setAuth(token, user);
-      navigate('/dashboard');
+      await register(email, password, name || undefined);
+      setRegisteredEmail(email);
     } catch (err: any) {
       setError(err.response?.data?.error ?? 'Registration failed');
     } finally {
@@ -33,6 +30,38 @@ export default function RegisterPage() {
 
   function handleGoogleLogin() {
     window.location.href = '/api/auth/google';
+  }
+
+  if (registeredEmail) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-primary-50 via-white to-violet-50 flex items-center justify-center px-4">
+        <div className="w-full max-w-sm text-center">
+          <div className="inline-flex flex-col items-center gap-1 mb-6">
+            <img src="/logo.png" alt="Tcher Ayu" className="h-20 w-auto" />
+            <span className="text-2xl text-gray-900 tracking-wide" style={{ fontFamily: "'Bitcount Prop Single', sans-serif" }}>TCHER AYU</span>
+          </div>
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-8">
+            <div className="w-14 h-14 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <svg className="w-7 h-7 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+              </svg>
+            </div>
+            <h2 className="text-xl font-bold text-gray-900 mb-2">Check your email</h2>
+            <p className="text-sm text-gray-500 mb-1">
+              We sent a verification link to
+            </p>
+            <p className="text-sm font-semibold text-gray-800 mb-4">{registeredEmail}</p>
+            <p className="text-xs text-gray-400">
+              Click the link in the email to activate your account. The link expires in 24 hours.
+            </p>
+          </div>
+          <p className="text-center text-sm text-gray-500 mt-4">
+            Already verified?{' '}
+            <Link to="/login" className="text-primary-600 font-medium hover:underline">Sign in</Link>
+          </p>
+        </div>
+      </div>
+    );
   }
 
   return (

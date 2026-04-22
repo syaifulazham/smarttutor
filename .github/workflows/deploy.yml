@@ -108,6 +108,12 @@ jobs:
           STRIPE_WEBHOOK_SECRET:   ${{ secrets.STRIPE_WEBHOOK_SECRET }}
           STRIPE_CERDAS_PRICE_ID:  ${{ secrets.STRIPE_CERDAS_PRICE_ID }}
           STRIPE_CEMERLANG_PRICE_ID: ${{ secrets.STRIPE_CEMERLANG_PRICE_ID }}
+          SMTP_HOST:               ${{ secrets.SMTP_HOST }}
+          SMTP_PORT:               ${{ secrets.SMTP_PORT }}
+          SMTP_SECURE:             ${{ secrets.SMTP_SECURE }}
+          SMTP_USER:               ${{ secrets.SMTP_USER }}
+          SMTP_PASS:               ${{ secrets.SMTP_PASS }}
+          SMTP_FROM:               ${{ secrets.SMTP_FROM }}
           GH_ACTOR:                ${{ github.actor }}
           GH_TOKEN:                ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -123,6 +129,7 @@ jobs:
             GEMINI_API_KEY,ELEVENLABS_API_KEY,
             STRIPE_SECRET_KEY,STRIPE_WEBHOOK_SECRET,
             STRIPE_CERDAS_PRICE_ID,STRIPE_CEMERLANG_PRICE_ID,
+            SMTP_HOST,SMTP_PORT,SMTP_SECURE,SMTP_USER,SMTP_PASS,SMTP_FROM,
             GH_ACTOR,GH_TOKEN
           script: |
             set -e
@@ -146,6 +153,12 @@ jobs:
             STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
             STRIPE_CERDAS_PRICE_ID=${STRIPE_CERDAS_PRICE_ID}
             STRIPE_CEMERLANG_PRICE_ID=${STRIPE_CEMERLANG_PRICE_ID}
+            SMTP_HOST=${SMTP_HOST}
+            SMTP_PORT=${SMTP_PORT}
+            SMTP_SECURE=${SMTP_SECURE}
+            SMTP_USER=${SMTP_USER}
+            SMTP_PASS=${SMTP_PASS}
+            SMTP_FROM=${SMTP_FROM}
             EOF
 
             # ── Install nginx site config (first deploy only if not exists) ─

@@ -10,6 +10,7 @@ import RegisterPage from '@/pages/RegisterPage';
 import AuthCallback from '@/pages/AuthCallback';
 import PricingPage from '@/pages/PricingPage';
 import BillingPage from '@/pages/BillingPage';
+import VerifyEmailPage from '@/pages/VerifyEmailPage';
 import Layout from '@/components/shared/Layout';
 import ProtectedRoute from '@/components/shared/ProtectedRoute';
 
@@ -23,6 +24,7 @@ export default function App() {
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/auth/callback" element={<AuthCallback />} />
         <Route path="/pricing" element={<PricingPage />} />
+        <Route path="/verify-email" element={<VerifyEmailPage />} />
 
         {/* Protected app routes */}
         <Route element={<ProtectedRoute />}>

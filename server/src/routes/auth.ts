@@ -7,6 +7,7 @@ import { signToken, verifyToken } from '../services/auth/jwtService';
 import { createError } from '../middleware/errorHandler';
 import { z } from 'zod';
 import { requireAuth, AuthedRequest } from '../middleware/auth';
+import { generateVerifyToken, sendVerificationEmail } from '../services/email';
 
 const router = Router();
 
@@ -30,6 +31,7 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
               email,
               name: profile.displayName,
               avatarUrl: profile.photos?.[0]?.value,
+              emailVerified: true,
             },
           });
           done(null, user);
@@ -72,10 +74,18 @@ router.post('/register', async (req: Request, res: Response, next: NextFunction)
     if (existing) return next(createError('Email already in use', 409));
 
     const hashed = await bcrypt.hash(password, 12);
-    const user = await prisma.user.create({ data: { email, password: hashed, name } });
+    const { token: verifyToken, expiry: verifyTokenExpiry } = generateVerifyToken();
 
-    const token = signToken({ userId: user.id, email: user.email });
-    res.status(201).json({ token, user: { id: user.id, email: user.email, name: user.name, avatarUrl: user.avatarUrl } });
+    await prisma.user.create({
+      data: { email, password: hashed, name, verifyToken, verifyTokenExpiry, emailVerified: false },
+    });
+
+    // Send verification email — don't block on failure
+    sendVerificationEmail(email, name ?? null, verifyToken).catch((err) =>
+      console.error('[email] Failed to send verification email:', err)
+    );
+
+    res.status(201).json({ requiresVerification: true, email });
   } catch (err) {
     next(err);
   }
@@ -91,8 +101,59 @@ router.post('/login', async (req: Request, res: Response, next: NextFunction) =>
     const valid = await bcrypt.compare(password, user.password);
     if (!valid) return next(createError('Invalid credentials', 401));
 
+    if (!user.emailVerified) {
+      return res.status(403).json({ error: 'Email not verified', code: 'EMAIL_NOT_VERIFIED', email });
+    }
+
     const token = signToken({ userId: user.id, email: user.email });
     res.json({ token, user: { id: user.id, email: user.email, name: user.name, avatarUrl: user.avatarUrl } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/verify-email', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { token } = req.query as { token: string };
+    if (!token) return next(createError('Missing token', 400));
+
+    const user = await prisma.user.findFirst({ where: { verifyToken: token } });
+    if (!user) return next(createError('Invalid or expired token', 400));
+
+    if (user.verifyTokenExpiry && user.verifyTokenExpiry < new Date()) {
+      return next(createError('Token expired', 400));
+    }
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { emailVerified: true, verifyToken: null, verifyTokenExpiry: null },
+    });
+
+    res.json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/resend-verification', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { email } = req.body as { email: string };
+    if (!email) return next(createError('Email required', 400));
+
+    const user = await prisma.user.findFirst({ where: { email } });
+    if (!user || user.emailVerified) {
+      // Return success regardless to avoid email enumeration
+      return res.json({ sent: true });
+    }
+
+    const { token: verifyToken, expiry: verifyTokenExpiry } = generateVerifyToken();
+    await prisma.user.update({ where: { id: user.id }, data: { verifyToken, verifyTokenExpiry } });
+
+    sendVerificationEmail(email, user.name ?? null, verifyToken).catch((err) =>
+      console.error('[email] Failed to resend verification email:', err)
+    );
+
+    res.json({ sent: true });
   } catch (err) {
     next(err);
   }

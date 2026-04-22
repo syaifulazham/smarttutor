@@ -1,6 +1,6 @@
 import { useState, FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { login } from '@/services/api';
+import { login, resendVerification } from '@/services/api';
 import { useAuthStore } from '@/store/authStore';
 
 export default function LoginPage() {
@@ -10,19 +10,39 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [unverifiedEmail, setUnverifiedEmail] = useState('');
+  const [resendSent, setResendSent] = useState(false);
+  const [resending, setResending] = useState(false);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError('');
+    setUnverifiedEmail('');
+    setResendSent(false);
     setLoading(true);
     try {
       const { token, user } = await login(email, password);
       setAuth(token, user);
       navigate('/dashboard');
     } catch (err: any) {
-      setError(err.response?.data?.error ?? 'Login failed');
+      const data = err.response?.data;
+      if (data?.code === 'EMAIL_NOT_VERIFIED') {
+        setUnverifiedEmail(data.email ?? email);
+      } else {
+        setError(data?.error ?? 'Login failed');
+      }
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleResend() {
+    setResending(true);
+    try {
+      await resendVerification(unverifiedEmail);
+      setResendSent(true);
+    } finally {
+      setResending(false);
     }
   }
 
@@ -52,6 +72,26 @@ export default function LoginPage() {
           {error && (
             <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
               {error}
+            </div>
+          )}
+
+          {unverifiedEmail && (
+            <div className="text-sm bg-amber-50 border border-amber-200 rounded-lg px-3 py-3 space-y-2">
+              <p className="text-amber-800 font-medium">Email not verified</p>
+              <p className="text-amber-700">
+                Please check your inbox for a verification link sent to <span className="font-semibold">{unverifiedEmail}</span>.
+              </p>
+              {resendSent ? (
+                <p className="text-green-700 text-xs">Verification email resent!</p>
+              ) : (
+                <button
+                  onClick={handleResend}
+                  disabled={resending}
+                  className="text-xs text-primary-600 font-medium hover:underline disabled:opacity-50"
+                >
+                  {resending ? 'Sending…' : 'Resend verification email'}
+                </button>
+              )}
             </div>
           )}
 
