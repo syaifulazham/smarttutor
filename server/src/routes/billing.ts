@@ -144,13 +144,17 @@ export async function handleWebhook(req: Request, res: Response) {
   const sig = req.headers['stripe-signature'] as string;
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET ?? '';
 
+  console.log('[webhook] received, sig present:', !!sig, 'secret present:', !!webhookSecret);
+
   let event: ReturnType<typeof stripe.webhooks.constructEvent>;
   try {
     event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
   } catch (err) {
-    console.error('Webhook signature verification failed:', err);
+    console.error('[webhook] signature verification failed:', err);
     return res.status(400).send('Webhook Error');
   }
+
+  console.log('[webhook] event type:', event.type);
 
   try {
     switch (event.type) {
@@ -180,6 +184,7 @@ export async function handleWebhook(req: Request, res: Response) {
         const subscriptionId = typeof invoice.subscription === 'string'
           ? invoice.subscription
           : invoice.subscription?.id;
+        console.log('[webhook] invoice billing_reason:', invoice.billing_reason, 'subscriptionId:', subscriptionId);
         if (!subscriptionId) break;
 
         if (invoice.billing_reason === 'subscription_create') {
