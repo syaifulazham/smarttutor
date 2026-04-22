@@ -182,11 +182,14 @@ export async function handleWebhook(req: Request, res: Response) {
       case 'invoice.payment_succeeded': {
         const invoice = event.data.object as any;
         const sub = invoice.subscription;
+        // Stripe API 2025+ may nest subscription under parent
         const subscriptionId: string | null =
-          typeof sub === 'string' ? sub :
+          (typeof sub === 'string' ? sub : null) ||
           (sub && typeof sub === 'object' ? sub.id : null) ||
-          (invoice.lines?.data?.[0]?.subscription ?? null);
-        console.log('[webhook] invoice billing_reason:', invoice.billing_reason, 'subscriptionId:', subscriptionId, 'raw sub type:', typeof sub);
+          (invoice.lines?.data?.[0]?.subscription ?? null) ||
+          (invoice.parent?.subscription_details?.subscription ?? null) ||
+          null;
+        console.log('[webhook] billing_reason:', invoice.billing_reason, 'subId:', subscriptionId, 'sub:', sub, 'parent:', JSON.stringify(invoice.parent));
         if (!subscriptionId) break;
 
         if (invoice.billing_reason === 'subscription_create') {
