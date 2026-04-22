@@ -24,7 +24,7 @@ const QUESTION_OBJECT_SHAPE = `{
   "questionText": "clean question text with proper formatting",
   "type": "multiple_choice | short_answer | long_answer | calculation | diagram_based",
   "subject": "Mathematics | Physics | Chemistry | Biology | History | etc",
-  "difficulty": "Easy | Medium | Hard",
+  "difficulty": "Easy | Medium | Hard (always in English regardless of language)",
   "components": [
     { "type": "text", "content": "..." },
     { "type": "equation", "content": "LaTeX string", "display": true },

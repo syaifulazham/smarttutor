@@ -181,10 +181,12 @@ export async function handleWebhook(req: Request, res: Response) {
       case 'invoice.paid':
       case 'invoice.payment_succeeded': {
         const invoice = event.data.object as any;
-        const subscriptionId = typeof invoice.subscription === 'string'
-          ? invoice.subscription
-          : invoice.subscription?.id;
-        console.log('[webhook] invoice billing_reason:', invoice.billing_reason, 'subscriptionId:', subscriptionId);
+        const sub = invoice.subscription;
+        const subscriptionId: string | null =
+          typeof sub === 'string' ? sub :
+          (sub && typeof sub === 'object' ? sub.id : null) ||
+          invoice.lines?.data?.[0]?.subscription ?? null;
+        console.log('[webhook] invoice billing_reason:', invoice.billing_reason, 'subscriptionId:', subscriptionId, 'raw sub type:', typeof sub);
         if (!subscriptionId) break;
 
         if (invoice.billing_reason === 'subscription_create') {
