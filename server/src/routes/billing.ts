@@ -185,7 +185,7 @@ export async function handleWebhook(req: Request, res: Response) {
         const subscriptionId: string | null =
           typeof sub === 'string' ? sub :
           (sub && typeof sub === 'object' ? sub.id : null) ||
-          invoice.lines?.data?.[0]?.subscription ?? null;
+          (invoice.lines?.data?.[0]?.subscription ?? null);
         console.log('[webhook] invoice billing_reason:', invoice.billing_reason, 'subscriptionId:', subscriptionId, 'raw sub type:', typeof sub);
         if (!subscriptionId) break;
 
