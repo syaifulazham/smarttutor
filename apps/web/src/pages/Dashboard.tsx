@@ -96,15 +96,15 @@ export default function Dashboard() {
       </div>
 
       {/* Summary stats */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-3 gap-2 sm:gap-4">
         {[
           { label: 'Subjects', value: subjects.length },
-          { label: 'Sessions Completed', value: totalCompleted },
-          { label: 'Total Sessions', value: sessions.length },
+          { label: 'Completed', value: totalCompleted },
+          { label: 'Sessions', value: sessions.length },
         ].map((stat) => (
-          <div key={stat.label} className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
-            <p className="text-2xl font-bold text-primary-600">{stat.value}</p>
-            <p className="text-xs text-gray-500 mt-1">{stat.label}</p>
+          <div key={stat.label} className="bg-white rounded-xl border border-gray-200 p-3 sm:p-4 shadow-sm">
+            <p className="text-xl sm:text-2xl font-bold text-primary-600">{stat.value}</p>
+            <p className="text-xs text-gray-500 mt-1 leading-tight">{stat.label}</p>
           </div>
         ))}
       </div>

@@ -611,9 +611,9 @@ export default function SessionView() {
 
   return (
     <>
-    <div className="flex gap-4 h-[calc(100vh-8rem)]">
+    <div className="flex flex-col lg:flex-row gap-4 lg:h-[calc(100vh-8rem)]">
       {/* Left: Question */}
-      <div className="w-2/5 bg-white rounded-xl border border-gray-200 shadow-sm p-5 overflow-y-auto flex-shrink-0">
+      <div className="w-full lg:w-2/5 bg-white rounded-xl border border-gray-200 shadow-sm p-5 overflow-y-auto flex-shrink-0 max-h-[50vh] lg:max-h-none">
         <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Question</h2>
         {session.question.title && (
           <p className="text-sm font-semibold text-gray-800 mb-3 leading-snug">
@@ -692,7 +692,7 @@ export default function SessionView() {
       </div>
 
       {/* Right: Chat */}
-      <div className="flex-1 flex flex-col bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+      <div className="flex-1 min-h-[60vh] lg:min-h-0 flex flex-col bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
         <div className="px-3 py-2 border-b border-gray-100 flex items-center gap-2.5">
           <button
             onClick={() => setShowAvatarPicker(true)}
