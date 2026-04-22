@@ -177,16 +177,30 @@ export default function LandingPage() {
             <a href="#tutors" className="text-gray-500 hover:text-gray-900 transition-colors">Tutor</a>
             <a href="#pricing" className="text-gray-500 hover:text-gray-900 transition-colors">Harga</a>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
             {user ? (
-              <Link to="/dashboard" className="px-4 py-2 rounded-lg bg-primary-600 text-white text-sm font-medium hover:bg-primary-700 transition-colors">
-                Papan Pemuka
+              <Link to="/dashboard" className="flex items-center gap-1.5 px-3 sm:px-4 py-2 rounded-lg bg-primary-600 text-white text-sm font-medium hover:bg-primary-700 transition-colors">
+                {/* Grid icon */}
+                <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+                </svg>
+                <span className="hidden sm:inline">Papan Pemuka</span>
               </Link>
             ) : (
               <>
-                <Link to="/login" className="text-sm font-medium text-gray-500 hover:text-gray-900 transition-colors">Log Masuk</Link>
-                <Link to="/register" className="px-4 py-2 rounded-lg bg-primary-600 text-white text-sm font-medium hover:bg-primary-700 transition-colors">
-                  Mulakan Percuma
+                <Link to="/login" className="flex items-center gap-1.5 p-2 sm:px-3 sm:py-2 rounded-lg text-gray-500 hover:text-gray-900 hover:bg-gray-100 transition-colors" title="Log Masuk">
+                  {/* Person icon */}
+                  <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  </svg>
+                  <span className="hidden sm:inline text-sm font-medium">Log Masuk</span>
+                </Link>
+                <Link to="/register" className="flex items-center gap-1.5 px-3 sm:px-4 py-2 rounded-lg bg-primary-600 text-white text-sm font-medium hover:bg-primary-700 transition-colors" title="Mulakan Percuma">
+                  {/* Rocket icon */}
+                  <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                  <span className="hidden sm:inline">Mulakan Percuma</span>
                 </Link>
               </>
             )}
