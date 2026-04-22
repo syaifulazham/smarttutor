@@ -9,8 +9,8 @@ const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 const tutorModel = genAI.getGenerativeModel({
   model: 'gemini-2.5-flash',
   generationConfig: {
-    temperature: 0.7,
-    topP: 0.92,
+    temperature: 1.0,
+    topP: 0.95,
   },
 });
 
@@ -382,8 +382,8 @@ export async function* streamTutorResponse(
   const langInstruction = LANGUAGE_INSTRUCTIONS[language] ?? LANGUAGE_INSTRUCTIONS['en'];
   const personalityInstruction = AVATAR_PERSONALITY[avatarId] ?? AVATAR_PERSONALITY['ayu'];
 
-  const groundingRule = `FACTUAL ACCURACY — critical:
-Base every explanation step strictly on the question content provided. Do not introduce values, formulas, definitions, or facts not present in or directly derivable from the question. If uncertain about a step, say so rather than guessing.
+  const groundingRule = `FACTUAL ACCURACY:
+Keep the core facts, values, and final answer accurate to the question. You are free to use analogies, creative examples, real-world connections, and your own teaching style to explain concepts — just ensure the conclusion and key facts are correct. If genuinely uncertain about a step, say so.
 This rule applies to explanations only — Quick Check quiz distractors may include plausible but incorrect alternatives to test understanding.`;
 
   const systemPrompt =
