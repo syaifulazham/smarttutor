@@ -21,7 +21,7 @@ const PLANS = [
   {
     key: 'CERDAS',
     name: 'Cerdas',
-    price: 'RM 9.90',
+    price: 'RM 13.90',
     period: '/ bulan',
     tagline: 'Untuk pelajar yang bersungguh-sungguh',
     taglineEn: 'For students who mean business',
@@ -35,7 +35,7 @@ const PLANS = [
   {
     key: 'CEMERLANG',
     name: 'Cemerlang',
-    price: 'RM 19.90',
+    price: 'RM 23.90',
     period: '/ bulan',
     tagline: 'Untuk pelajar yang mengejar kecemerlangan',
     taglineEn: 'For students chasing excellence',

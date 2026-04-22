@@ -21,13 +21,13 @@ router.get('/plans', (_req, res) => {
       {
         key: 'CERDAS',
         name: 'Cerdas',
-        amountMYR: 990,
+        amountMYR: 1390,
         limits: PLAN_LIMITS.CERDAS,
       },
       {
         key: 'CEMERLANG',
         name: 'Cemerlang',
-        amountMYR: 1990,
+        amountMYR: 2390,
         limits: PLAN_LIMITS.CEMERLANG,
       },
     ],
