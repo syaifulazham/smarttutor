@@ -174,13 +174,33 @@ export async function handleWebhook(req: Request, res: Response) {
         break;
       }
 
+      case 'invoice.paid':
       case 'invoice.payment_succeeded': {
-        // Monthly renewal — reset usage counters
         const invoice = event.data.object as any;
         const subscriptionId = typeof invoice.subscription === 'string'
           ? invoice.subscription
           : invoice.subscription?.id;
-        if (subscriptionId && invoice.billing_reason === 'subscription_cycle') {
+        if (!subscriptionId) break;
+
+        if (invoice.billing_reason === 'subscription_create') {
+          // Initial payment — upgrade plan using subscription metadata
+          const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+          const userId = subscription.metadata?.userId;
+          const tier = subscription.metadata?.tier as 'CERDAS' | 'CEMERLANG';
+          if (userId && tier) {
+            await prisma.user.update({
+              where: { id: userId },
+              data: {
+                planTier: tier,
+                stripeSubscriptionId: subscriptionId,
+                capturesUsed: 0,
+                sessionsUsed: 0,
+                billingCycleStart: new Date(),
+              },
+            });
+          }
+        } else if (invoice.billing_reason === 'subscription_cycle') {
+          // Monthly renewal — reset usage counters
           await prisma.user.updateMany({
             where: { stripeSubscriptionId: subscriptionId },
             data: {
