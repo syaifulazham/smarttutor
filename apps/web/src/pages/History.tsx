@@ -18,6 +18,7 @@ export default function History() {
   const queryClient = useQueryClient();
   const planTier = useAuthStore((s) => s.user?.planTier ?? 'FREE');
 
+  const [search, setSearch] = useState('');
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -83,13 +84,36 @@ export default function History() {
 
   const canExport = planTier === 'CERDAS' || planTier === 'CEMERLANG';
 
+  const q = search.trim().toLowerCase();
+  const filtered = q
+    ? (sessions as Session[]).filter((s) =>
+        s.question?.title?.toLowerCase().includes(q) ||
+        s.question?.subject?.toLowerCase().includes(q) ||
+        s.mode.toLowerCase().includes(q)
+      )
+    : (sessions as Session[]);
+
   if (isLoading) return <div className="text-center text-gray-400 py-16">Loading...</div>;
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
         <h1 className="text-2xl font-bold text-gray-900">History</h1>
+        <div className="relative flex-1 sm:max-w-xs">
+          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+          </svg>
+          <input
+            type="text"
+            placeholder="Search by title, subject…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full pl-9 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+          />
+        </div>
+      </div>
 
+      <div className="flex items-center justify-between">
         {sessions.length > 0 && (
           <div className="flex items-center gap-2">
             {selectMode ? (
@@ -158,14 +182,13 @@ export default function History() {
         </div>
       )}
 
-      {sessions.length === 0 ? (
+      {filtered.length === 0 ? (
         <div className="bg-white rounded-xl border border-gray-200 p-8 text-center text-gray-400 text-sm">
-          No sessions yet.{' '}
-          <Link to="/capture" className="text-primary-600 hover:underline">Start one!</Link>
+          {q ? `No sessions matching "${search}"` : <>No sessions yet.{' '}<Link to="/capture" className="text-primary-600 hover:underline">Start one!</Link></>}
         </div>
       ) : (
         <div className="space-y-3">
-          {(sessions as Session[]).map((s) => (
+          {filtered.map((s) => (
             <div
               key={s.id}
               className={`bg-white rounded-xl border shadow-sm transition-colors ${

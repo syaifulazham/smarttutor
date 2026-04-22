@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { getSessions } from '@/services/api';
@@ -64,6 +65,7 @@ function SubjectIcon({ subject, className }: { subject: string; className?: stri
 }
 
 export default function Dashboard() {
+  const [search, setSearch] = useState('');
   const { data: allSessions = [], isLoading } = useQuery({
     queryKey: ['sessions'],
     queryFn: getSessions,
@@ -82,16 +84,33 @@ export default function Dashboard() {
 
   const totalCompleted = sessions.filter(s => s.completed).length;
 
+  const q = search.trim().toLowerCase();
+  const filteredSubjects = q
+    ? subjects.filter(([subject]) => subject.toLowerCase().includes(q))
+    : subjects;
+
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+        <h1 className="text-2xl font-bold text-gray-900 flex-shrink-0">Dashboard</h1>
+        <div className="relative flex-1 sm:max-w-xs">
+          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+          </svg>
+          <input
+            type="text"
+            placeholder="Search subjects…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full pl-9 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+          />
+        </div>
         <Link
           to="/capture"
-          className="bg-primary-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors"
+          className="flex-shrink-0 bg-primary-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors"
         >
-          + Capture Question
+          + Capture
         </Link>
       </div>
 
@@ -121,7 +140,10 @@ export default function Dashboard() {
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {subjects.map(([subject, subSessions]) => {
+            {filteredSubjects.length === 0 ? (
+              <div className="col-span-full text-sm text-gray-400 text-center py-6">No subjects matching "{search}"</div>
+            ) : null}
+            {filteredSubjects.map(([subject, subSessions]) => {
               const color = subjectColor(subject);
               const done = subSessions.filter(s => s.completed).length;
               const inProg = subSessions.length - done;
