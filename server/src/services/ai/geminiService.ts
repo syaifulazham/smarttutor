@@ -9,8 +9,8 @@ const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 const tutorModel = genAI.getGenerativeModel({
   model: 'gemini-2.5-flash',
   generationConfig: {
-    temperature: 0.4,
-    topP: 0.85,
+    temperature: 0.7,
+    topP: 0.92,
   },
 });
 
@@ -326,7 +326,7 @@ export async function* streamSchemeAnswer(
   const prompt = SCHEME_PROMPT[language] ?? SCHEME_PROMPT['en'];
   const schemeModel = genAI.getGenerativeModel({
     model: 'gemini-2.5-flash',
-    generationConfig: { temperature: 0.2, topP: 0.8 },
+    generationConfig: { temperature: 0.3, topP: 0.85 },
   });
   const stream = await schemeModel.generateContentStream([
     prompt,
