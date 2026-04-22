@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { useAuthStore } from '@/store/authStore';
 import { TUTOR_AVATARS } from '@/data/tutorAvatars';
+import CookieBanner from '@/components/shared/CookieBanner';
 
 const PLANS = [
   {
@@ -163,6 +164,7 @@ export default function LandingPage() {
   const user = useAuthStore((s) => s.user);
 
   return (
+    <>
     <div className="min-h-screen bg-white text-gray-900">
 
       {/* ── Nav ─────────────────────────────────────────────────── */}
@@ -423,5 +425,8 @@ export default function LandingPage() {
       </footer>
 
     </div>
+
+    <CookieBanner />
+    </>
   );
 }
