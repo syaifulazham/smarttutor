@@ -144,7 +144,6 @@ export async function handleWebhook(req: Request, res: Response) {
   const sig = req.headers['stripe-signature'] as string;
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET ?? '';
 
-  console.log('[webhook] received, sig present:', !!sig, 'secret present:', !!webhookSecret);
 
   let event: ReturnType<typeof stripe.webhooks.constructEvent>;
   try {
@@ -154,7 +153,6 @@ export async function handleWebhook(req: Request, res: Response) {
     return res.status(400).send('Webhook Error');
   }
 
-  console.log('[webhook] event type:', event.type);
 
   try {
     switch (event.type) {
@@ -189,7 +187,6 @@ export async function handleWebhook(req: Request, res: Response) {
           (invoice.lines?.data?.[0]?.subscription ?? null) ||
           (invoice.parent?.subscription_details?.subscription ?? null) ||
           null;
-        console.log('[webhook] billing_reason:', invoice.billing_reason, 'subId:', subscriptionId, 'sub:', sub, 'parent:', JSON.stringify(invoice.parent));
         if (!subscriptionId) break;
 
         if (invoice.billing_reason === 'subscription_create') {
