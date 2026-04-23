@@ -109,6 +109,8 @@ router.post('/checkout', requireAuth, async (req, res: Response, next: NextFunct
       cancel_url: `${frontendUrl}/pricing?cancelled=1`,
       metadata: { userId, tier },
       subscription_data: { metadata: { userId, tier } },
+      payment_method_collection: 'always',
+      wallet_options: { link: { display: 'never' } },
     });
 
     res.json({ url: session.url });
