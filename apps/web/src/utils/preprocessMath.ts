@@ -12,6 +12,23 @@
  * never sees the original backslash forms.
  */
 export function preprocessMath(content: string): string {
+  // 0. Convert backtick-wrapped math to inline $...$ (AI sometimes codes math)
+  content = content.replace(/`([^`\n]+)`/g, (match, inner) => {
+    if (!/[×÷±√∞≤≥≠≈^_]/.test(inner) && !/\\[a-zA-Z]/.test(inner)) return match;
+    const latex = inner
+      .replace(/×/g, ' \\times ')
+      .replace(/÷/g, ' \\div ')
+      .replace(/±/g, ' \\pm ')
+      .replace(/√/g, '\\sqrt')
+      .replace(/∞/g, '\\infty')
+      .replace(/≤/g, ' \\leq ')
+      .replace(/≥/g, ' \\geq ')
+      .replace(/≠/g, ' \\neq ')
+      .replace(/≈/g, ' \\approx ')
+      .replace(/\s+/g, ' ').trim();
+    return `$${latex}$`;
+  });
+
   // 1. \[...\] → $$...$$ (display — before inline to avoid partial overlap)
   content = content.replace(/\\\[([\s\S]+?)\\\]/g, (_, m) => `$$${m}$$`);
   // 2. \(...\) → $...$ (inline)
@@ -123,15 +140,56 @@ export function normalizeSchemeMarkdown(text: string): string {
         /\\(Rightarrow|rightarrow|Leftarrow|leftarrow|frac|times|div|cdot|Leftrightarrow|implies)/.test(inner) ||
         /[+\-]{1}/.test(inner.replace(/^\s*[-+]?\d/, '')); // has operator beyond leading sign
       if (!isComplex) return match; // keep simple inline
-      // Place on its own line: if preceded by non-whitespace on the same line, break before it
-      return `\n$$${inner}$$\n`;
+      return `\n\n$$${inner}$$\n\n`;
     }
   );
+
+  // Ensure any $$ block that follows text on the same line gets its own paragraph
+  text = text.replace(/([^\n$\s][^\n$]*?)\s*(\$\$)/g, '$1\n\n$$');
+  // Ensure any $$ block that is followed by text on the same line gets a blank line after
+  text = text.replace(/(\$\$)\s*([^\n$\s])/g, '$1\n\n$2');
+  // Remove stray lone $ signs left over from malformed AI output
+  text = text.replace(/(?<!\$)\$(?!\$)(?![^$\n]*\$)/gm, '');
 
   // Clean up any triple+ blank lines introduced
   text = text.replace(/\n{3,}/g, '\n\n');
 
   return text;
+}
+
+/**
+ * Client-side equivalent of server's reformatSchemeOutput.
+ * Converts AI scheme output (inline $...$ math, **labels** inline) into
+ * clean $$...$$ display-math blocks separated by bold labels.
+ * Idempotent — safe to call on already-formatted content.
+ */
+export function reformatScheme(raw: string): string {
+  // Strip code fences
+  raw = raw.replace(/^```[\w]*\n?/gm, '').replace(/\n?```\s*$/gm, '').trim();
+  // Normalise \[...\] → $$...$$
+  raw = raw.replace(/\\\[([\s\S]+?)\\\]/g, (_, m) => `$$${m.trim()}$$`);
+
+  const parts = raw.split(/(\*\*[^*]+\*\*)/g);
+  const output: string[] = [];
+
+  for (const part of parts) {
+    const trimmed = part.trim();
+    if (!trimmed) continue;
+
+    if (/^\*\*[^*]+\*\*$/.test(trimmed)) {
+      output.push('');
+      output.push(trimmed);
+      output.push('');
+    } else {
+      for (const rawLine of trimmed.split('\n')) {
+        if (rawLine.trim().startsWith('###')) { output.push(rawLine.trim()); continue; }
+        const line = rawLine.replace(/\$/g, '').trim();
+        if (line) output.push(`$$${line}$$`);
+      }
+    }
+  }
+
+  return output.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
 /**

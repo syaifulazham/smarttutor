@@ -23,17 +23,30 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
       async (_accessToken, _refreshToken, profile, done) => {
         try {
           const email = profile.emails?.[0]?.value ?? `${profile.id}@google.com`;
-          const user = await prisma.user.upsert({
-            where: { googleId: profile.id },
-            update: { name: profile.displayName, avatarUrl: profile.photos?.[0]?.value },
-            create: {
-              googleId: profile.id,
-              email,
-              name: profile.displayName,
-              avatarUrl: profile.photos?.[0]?.value,
-              emailVerified: true,
-            },
-          });
+          const avatarUrl = profile.photos?.[0]?.value;
+          const name = profile.displayName;
+
+          // Try by googleId first, then fall back to email (account linking)
+          let user = await prisma.user.findFirst({ where: { googleId: profile.id } });
+          if (!user) {
+            user = await prisma.user.findFirst({ where: { email } });
+            if (user) {
+              // Link existing email account to Google
+              user = await prisma.user.update({
+                where: { id: user.id },
+                data: { googleId: profile.id, name, avatarUrl, emailVerified: true },
+              });
+            } else {
+              user = await prisma.user.create({
+                data: { googleId: profile.id, email, name, avatarUrl, emailVerified: true },
+              });
+            }
+          } else {
+            user = await prisma.user.update({
+              where: { id: user.id },
+              data: { name, avatarUrl },
+            });
+          }
           done(null, user);
         } catch (err) {
           done(err as Error);

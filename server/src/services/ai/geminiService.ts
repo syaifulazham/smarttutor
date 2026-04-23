@@ -258,66 +258,158 @@ export async function getCorrectAnswerLetter(questionContent: object): Promise<s
 }
 
 const SCHEME_PROMPT: Record<string, string> = {
-  en: `You are providing a model answer / marking scheme for this question.
-Output ONLY valid markdown. Do NOT wrap in code fences or backticks.
+  en: `Write a step-by-step mathematics solution. Follow this exact output format — no deviations.
 
-Structure rules (follow exactly):
-1. If the question has sub-parts (a), (b), (c)…, start each with a ### heading, e.g. ### (a) Find the value of p
-2. Under each heading, list every marking point as a markdown list item ("- "). Do NOT use the bullet character (•).
-3. End each marking point with the mark in brackets, e.g. [1m].
-4. Leave a blank line between each ### section.
+OUTPUT FORMAT RULES:
+1. Output ONLY markdown. No code fences. No backticks.
+2. The ONLY allowed math format is display math: $$...$$ on its OWN line.
+3. NEVER write LaTeX outside of $$...$$. NEVER write $ (single dollar) at all.
+4. NEVER put text and $$ on the same line.
+5. Each step = one bold description line + one $$...$$ line. Nothing else on those lines.
+6. Blank line between every step.
+7. Sub-parts use ### headings.
 
-MATH FORMATTING — critical:
-- NEVER mix an equation and a text statement on the same line.
-- Every equation or working step goes on its OWN line using display math: $$equation$$
-- Only single variables or trivial values may stay inline: $p = 1$, $x = h$
-- Each arrow / implication (⟹) that leads to the next step must start a NEW line.
+EXACT TEMPLATE TO FOLLOW:
 
-Example of correct format:
-### (a) Find p
+$$first expression here$$
 
-- Substitute point $(0, 7)$ into the function:
-$$7 = 2(0 - p)^2 + 5$$
-$$2p^2 = 2$$
-$$p = \pm 1$$ [1m]
-- Verify with $(2, 7)$ using $p = 1$:
-$$y = 2(2-1)^2 + 5 = 7 \checkmark$$ [1m]
+**Description of step 1:**
 
-### (b) Axis of symmetry
+$$= result of step 1$$
 
-- General form $y = a(x-h)^2+k$ has axis of symmetry $x = h$. [1m]
-- With $p = 1$, axis of symmetry is $x = 1$. [1m]`,
+**Description of step 2:**
 
-  ms: `Anda menyediakan skema jawapan / model jawapan untuk soalan ini.
-Output HANYA markdown yang betul. JANGAN balut dengan code fence atau backtick.
+$$= result of step 2$$
 
-Peraturan struktur (ikut dengan tepat):
-1. Jika soalan ada bahagian (a), (b), (c)…, mulakan setiap bahagian dengan heading ###, cth. ### (a) Cari nilai p
-2. Di bawah setiap heading, senaraikan setiap isi penting sebagai item senarai markdown ("- "). JANGAN gunakan aksara bullet (•).
-3. Akhiri setiap isi dengan markah dalam kurungan, cth. [1m].
-4. Tinggalkan baris kosong antara setiap bahagian ###.
+**Description of step 3:**
 
-FORMAT MATEMATIK — penting:
-- JANGAN letakkan persamaan dan kenyataan teks dalam baris yang sama.
-- Setiap persamaan atau langkah pengiraan mesti berada pada barisnya SENDIRI menggunakan display math: $$persamaan$$
-- Hanya pemboleh ubah tunggal atau nilai ringkas boleh kekal sebaris: $p = 1$
-- Setiap anak panah / implikasi yang membawa ke langkah seterusnya mesti bermula pada baris BARU.`,
+$$= final answer$$
 
-  zh: `你正在为这道题提供标准答案/评分方案。
-只输出有效的 markdown — 不要用代码围栏或反引号包裹。
+EXAMPLE OUTPUT (division of algebraic fractions):
 
-结构规则（严格遵守）：
-1. 若题目有子问 (a)(b)(c)…，每个子问以 ### 标题开始，例如：### (a) 求 p 的值
-2. 每个标题下，用 markdown 列表项（"- " 开头）列出每个得分点，禁止使用 • 字符。
-3. 每个得分点末尾注明分值，例如 [1分]。
-4. 每个 ### 段落之间空一行。
+$$\\frac{4-x^2}{xy} \\div \\frac{4-2x}{2y}$$
 
-数学格式——重要：
-- 绝对不要把方程式和文字说明写在同一行。
-- 每个方程式或计算步骤单独占一行，使用展示数学模式：$$方程式$$
-- 只有单个变量或简单值才可以内联：$p = 1$
-- 每个推导箭头（⟹）必须另起新行。`,
+**Change division to multiplication:**
+
+$$= \\frac{4-x^2}{xy} \\times \\frac{2y}{4-2x}$$
+
+**Factorise the numerator and denominator:**
+
+$$= \\frac{(2+x)(2-x)}{xy} \\times \\frac{2y}{2(2-x)}$$
+
+**Cancel common factors:**
+
+$$= \\frac{2+x}{x}$$`,
+
+  ms: `Tulis penyelesaian matematik langkah demi langkah. Ikut format output yang tepat ini — tiada pengecualian.
+
+PERATURAN FORMAT OUTPUT:
+1. Output HANYA markdown. Tiada code fence. Tiada backtick.
+2. Satu-satunya format matematik yang dibenarkan ialah display math: $$...$$ pada barisnya SENDIRI.
+3. JANGAN tulis LaTeX di luar $$...$$. JANGAN tulis $ (dolar tunggal) langsung.
+4. JANGAN letakkan teks dan $$ pada baris yang sama.
+5. Setiap langkah = satu baris deskripsi tebal + satu baris $$...$$. Tiada yang lain pada baris tersebut.
+6. Baris kosong antara setiap langkah.
+7. Bahagian kecil guna heading ###.
+
+TEMPLAT TEPAT UNTUK DIIKUTI:
+
+$$ungkapan pertama$$
+
+**Deskripsi langkah 1:**
+
+$$= keputusan langkah 1$$
+
+**Deskripsi langkah 2:**
+
+$$= keputusan langkah 2$$
+
+**Deskripsi langkah 3:**
+
+$$= jawapan akhir$$
+
+CONTOH OUTPUT (bahagi pecahan algebra):
+
+$$\\frac{4-x^2}{xy} \\div \\frac{4-2x}{2y}$$
+
+**Tukar operasi bahagi kepada darab:**
+
+$$= \\frac{4-x^2}{xy} \\times \\frac{2y}{4-2x}$$
+
+**Faktorkan pengangka dan penyebut:**
+
+$$= \\frac{(2+x)(2-x)}{xy} \\times \\frac{2y}{2(2-x)}$$
+
+**Batalkan faktor sepunya:**
+
+$$= \\frac{2+x}{x}$$`,
+
+  zh: `写出分步数学解答。严格遵循以下输出格式，不得偏离。
+
+输出格式规则：
+1. 只输出 markdown。不使用代码围栏，不使用反引号。
+2. 唯一允许的数学格式是展示数学：$$...$$ 单独占一行。
+3. 绝对不要在 $$...$$ 之外写 LaTeX。绝对不要写单个 $ 符号。
+4. 绝对不要在同一行放文字和 $$。
+5. 每个步骤 = 一行粗体描述 + 一行 $$...$$。这两行不得有其他内容。
+6. 每个步骤之间空一行。
+7. 子问题使用 ### 标题。
+
+严格遵循的模板：
+
+$$第一个式子$$
+
+**第1步描述：**
+
+$$= 第1步结果$$
+
+**第2步描述：**
+
+$$= 第2步结果$$
+
+**第3步描述：**
+
+$$= 最终答案$$`,
 };
+
+// Reformats raw AI scheme output into clean $$...$$ + **label** markdown.
+// Handles both the correct format ($$...$$ on own line) and the common AI deviation
+// where everything is on one line with inline $...$ math and **labels** inline.
+export function reformatSchemeOutput(raw: string): string {
+  // Strip code fences
+  raw = raw.replace(/^```[\w]*\n?/gm, '').replace(/\n?```\s*$/gm, '').trim();
+
+  // Normalise \[...\] → $$...$$ before splitting
+  raw = raw.replace(/\\\[([\s\S]+?)\\\]/g, (_, m) => `$$${m.trim()}$$`);
+
+  // Split on **...** bold labels — [^*] allows newlines inside labels
+  const parts = raw.split(/(\*\*[^*]+\*\*)/g);
+  const output: string[] = [];
+
+  for (const part of parts) {
+    const trimmed = part.trim();
+    if (!trimmed) continue;
+
+    if (/^\*\*[^*]+\*\*$/.test(trimmed)) {
+      output.push('');
+      output.push(trimmed);
+      output.push('');
+    } else {
+      // Math content — process line by line.
+      // Strip all $ signs (whether inline $...$ or display $$...$$) and re-wrap in $$$...$$.
+      for (const rawLine of trimmed.split('\n')) {
+        if (rawLine.trim().startsWith('###')) {
+          output.push(rawLine.trim());
+          continue;
+        }
+        const line = rawLine.replace(/\$/g, '').trim();
+        if (line) output.push(`$$${line}$$`);
+      }
+    }
+  }
+
+  return output.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
 
 export async function* streamSchemeAnswer(
   questionContent: object,
@@ -331,7 +423,7 @@ export async function* streamSchemeAnswer(
   const stream = await schemeModel.generateContentStream([
     prompt,
     `Question: ${JSON.stringify(questionContent)}`,
-    'Provide the model answer / marking scheme now:',
+    'Provide the suggested solution now:',
   ]);
 
   for await (const chunk of stream.stream) {

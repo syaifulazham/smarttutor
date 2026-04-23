@@ -4,7 +4,7 @@ import { prisma } from '../prisma/client';
 import { createError } from '../middleware/errorHandler';
 import { sessionGate, schemeGate, notesGate } from '../middleware/planGate';
 import { PLAN_LIMITS, PlanTier } from '../config/plans';
-import { streamTutorResponse, streamSchemeAnswer, getCorrectAnswerLetter } from '../services/ai/geminiService';
+import { streamTutorResponse, streamSchemeAnswer, reformatSchemeOutput, getCorrectAnswerLetter } from '../services/ai/geminiService';
 import { z } from 'zod';
 
 const router = Router();
@@ -74,7 +74,12 @@ router.get('/:id', requireAuth, async (req, res: Response, next: NextFunction) =
       include: { question: true },
     });
     if (!session) return next(createError('Session not found', 404));
-    res.json(session);
+    // Reformat schemeAnswer on the way out so the mount path also gets clean content
+    if (session.schemeAnswer) {
+      res.json({ ...session, schemeAnswer: reformatSchemeOutput(session.schemeAnswer) });
+    } else {
+      res.json(session);
+    }
   } catch (err) {
     next(err);
   }
@@ -213,7 +218,8 @@ router.post('/:id/scheme', requireAuth, schemeGate, async (req, res: Response, n
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
       res.flushHeaders();
-      res.write(`data: ${JSON.stringify({ chunk: session.schemeAnswer })}\n\n`);
+      const cached = reformatSchemeOutput(session.schemeAnswer);
+      res.write(`data: ${JSON.stringify({ chunk: cached })}\n\n`);
       res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
       return res.end();
     }
@@ -223,12 +229,14 @@ router.post('/:id/scheme', requireAuth, schemeGate, async (req, res: Response, n
     res.setHeader('Connection', 'keep-alive');
     res.flushHeaders();
 
-    let full = '';
+    // Buffer full response then reformat before sending
+    let raw = '';
     for await (const chunk of streamSchemeAnswer(session.question.parsedContent as object, language)) {
-      full += chunk;
-      res.write(`data: ${JSON.stringify({ chunk })}\n\n`);
+      raw += chunk;
     }
 
+    const full = reformatSchemeOutput(raw);
+    res.write(`data: ${JSON.stringify({ chunk: full })}\n\n`);
     res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
     res.end();
 

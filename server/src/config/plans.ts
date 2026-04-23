@@ -30,7 +30,7 @@ export const PLAN_LIMITS: Record<PlanTier, PlanLimits> = {
     imageCapture: true,
     languages: ['en', 'ms', 'zh'],
     markingScheme: true,
-    regenerateScheme: false,
+    regenerateScheme: true,
     historyDays: 90,
     avatars: true,
     priorityAI: false,

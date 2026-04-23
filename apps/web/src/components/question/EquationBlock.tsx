@@ -13,7 +13,9 @@ export default function EquationBlock({ content, display }: Props) {
   useEffect(() => {
     if (ref.current) {
       try {
-        katex.render(content, ref.current, {
+        // Strip accidental $...$ or $$...$$ delimiters the AI sometimes includes
+        const latex = content.replace(/^\$+/, '').replace(/\$+$/, '').trim();
+        katex.render(latex, ref.current, {
           displayMode: display,
           throwOnError: false,
         });

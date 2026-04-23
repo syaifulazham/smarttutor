@@ -13,7 +13,7 @@ import 'katex/dist/katex.min.css';
 import { useNavigate } from 'react-router-dom';
 import { getSession, completeSession, deleteSession, saveSessionNotes } from '@/services/api';
 import { useAuthStore } from '@/store/authStore';
-import { preprocessMath, stripOuterCodeFence, normalizeSchemeMarkdown } from '@/utils/preprocessMath';
+import { preprocessMath, stripOuterCodeFence, reformatScheme } from '@/utils/preprocessMath';
 import QuestionRenderer from '@/components/question/QuestionRenderer';
 import InlineMath from '@/components/shared/InlineMath';
 import MathText from '@/components/question/MathText';
@@ -246,9 +246,14 @@ const SHOW_ANSWER_LABEL: Record<string, string> = {
   en: 'Show Answer', ms: 'Tunjuk Jawapan', zh: '显示答案',
 };
 
+const SUGGESTED_SOLUTION_LABEL: Record<string, string> = {
+  en: 'Suggested Solution', ms: 'Cadangan Penyelesaian', zh: '建议解答',
+};
+
 // Paginated assistant message — shows one step at a time with Next + Voice + Show Answer
 function SteppedMessage({ content, messageIndex, speech, language, parsedContent, sessionId, isLastMessage, onAnswerRevealed }: SteppedMessageProps) {
   const parts = splitIntoParts(content);
+  const planTier = useAuthStore((s) => s.user?.planTier ?? 'FREE');
   const [revealed, setRevealed] = useState(1);
   const [showAnswer, setShowAnswer] = useState(false);
   const [resolvedLetter, setResolvedLetter] = useState<string | null>(null);
@@ -263,7 +268,7 @@ function SteppedMessage({ content, messageIndex, speech, language, parsedContent
     fetch(`/api/sessions/${sessionId}`, { headers })
       .then(r => r.json())
       .then((s) => {
-        if (s.schemeAnswer) { setShowAnswer(true); setSchemeText(s.schemeAnswer); }
+        if (s.schemeAnswer) { setShowAnswer(true); setSchemeText(reformatScheme(s.schemeAnswer)); }
         if (s.correctLetter) { setShowAnswer(true); setResolvedLetter(s.correctLetter); onAnswerRevealed?.(s.correctLetter); }
       })
       .catch(() => {});
@@ -299,6 +304,7 @@ function SteppedMessage({ content, messageIndex, speech, language, parsedContent
         console.error('Answer fetch failed:', err);
       }
     } else {
+      const prevScheme = schemeText;
       setSchemeFetching(true);
       setSchemeText('');
       try {
@@ -307,7 +313,14 @@ function SteppedMessage({ content, messageIndex, speech, language, parsedContent
           headers,
           body: JSON.stringify({ language, regenerate }),
         });
-        if (!res.ok) throw new Error(`Server error ${res.status}`);
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          if (regenerate) setSchemeText(prevScheme);
+          if (data.upgradeRequired) {
+            alert('Regenerating the marking scheme requires a Cerdas or Cemerlang plan.');
+          }
+          return;
+        }
         const reader = res.body?.getReader();
         const decoder = new TextDecoder();
         let full = '';
@@ -319,7 +332,7 @@ function SteppedMessage({ content, messageIndex, speech, language, parsedContent
             for (const line of lines) {
               try {
                 const json = JSON.parse(line.slice(6));
-                if (json.chunk) { full += json.chunk; setSchemeText(full); }
+                if (json.chunk) { full += json.chunk; setSchemeText(reformatScheme(full)); }
               } catch { /* skip malformed SSE line */ }
             }
           }
@@ -327,6 +340,7 @@ function SteppedMessage({ content, messageIndex, speech, language, parsedContent
         onAnswerRevealed?.(null);
       } catch (err) {
         console.error('Scheme fetch failed:', err);
+        if (regenerate) setSchemeText(prevScheme);
       } finally {
         setSchemeFetching(false);
       }
@@ -462,11 +476,11 @@ function SteppedMessage({ content, messageIndex, speech, language, parsedContent
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
-              Marking Scheme / Model Answer
+              {SUGGESTED_SOLUTION_LABEL[language] ?? SUGGESTED_SOLUTION_LABEL['en']}
             </p>
-            {!schemeFetching && schemeText && (
+            {!schemeFetching && schemeText && (planTier === 'CEMERLANG' || planTier === 'CERDAS') && (
               <button
-                onClick={() => { setSchemeText(''); handleShowAnswer(true); }}
+                onClick={() => handleShowAnswer(true)}
                 className="text-[10px] text-indigo-400 hover:text-indigo-600 flex items-center gap-1 transition-colors"
                 title="Regenerate scheme"
               >
@@ -482,7 +496,7 @@ function SteppedMessage({ content, messageIndex, speech, language, parsedContent
           ) : (
             <div className="prose prose-sm max-w-none prose-headings:text-indigo-800 prose-headings:font-bold prose-headings:mt-4 prose-headings:mb-1 prose-h3:text-sm prose-strong:text-indigo-800 prose-li:my-1 prose-ul:my-1 prose-p:my-1.5 text-indigo-900 [&>*:first-child]:mt-0">
               <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
-                {preprocessMath(normalizeSchemeMarkdown(stripOuterCodeFence(schemeText)))}
+                {preprocessMath(reformatScheme(stripOuterCodeFence(schemeText)))}
               </ReactMarkdown>
               {schemeFetching && <span className="animate-pulse text-indigo-400">▋</span>}
             </div>
