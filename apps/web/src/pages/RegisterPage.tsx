@@ -1,8 +1,14 @@
 import { useState, FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { register } from '@/services/api';
+import { usePageMeta } from '@/hooks/usePageMeta';
 
 export default function RegisterPage() {
+  usePageMeta({
+    title: 'Get Started Free | Tcher Ayu',
+    description: 'Create your free Tcher Ayu account. No credit card required. Start getting AI-powered step-by-step explanations for your SPM, STPM and university questions today.',
+    canonical: 'https://tcherayu.com/register',
+  });
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');

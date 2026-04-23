@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '@/store/authStore';
 import { createCheckoutSession } from '@/services/api';
+import { usePageMeta } from '@/hooks/usePageMeta';
 
 const PLANS = [
   {
@@ -79,6 +80,11 @@ const PLANS = [
 ];
 
 export default function PricingPage() {
+  usePageMeta({
+    title: 'Pricing | Tcher Ayu',
+    description: 'Choose the Tcher Ayu plan that fits you. Free (5 captures/month), Cerdas (RM 13.90/month), or Cemerlang (RM 23.90/month) — full AI tutoring for SPM, STPM and university students.',
+    canonical: 'https://tcherayu.com/pricing',
+  });
   const user = useAuthStore((s) => s.user);
   const [loading, setLoading] = useState<string | null>(null);
   const [searchParams] = useSearchParams();

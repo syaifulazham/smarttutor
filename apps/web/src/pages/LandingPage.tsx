@@ -2,6 +2,63 @@ import { Link } from 'react-router-dom';
 import { useAuthStore } from '@/store/authStore';
 import { TUTOR_AVATARS } from '@/data/tutorAvatars';
 import CookieBanner from '@/components/shared/CookieBanner';
+import { usePageMeta } from '@/hooks/usePageMeta';
+
+const JSONLD = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    {
+      '@type': 'Organization',
+      '@id': 'https://tcherayu.com/#organization',
+      name: 'Tcher Ayu',
+      url: 'https://tcherayu.com',
+      logo: 'https://tcherayu.com/logo.png',
+      description: 'AI tutoring platform for Malaysian SPM, STPM and university students.',
+    },
+    {
+      '@type': 'SoftwareApplication',
+      name: 'Tcher Ayu',
+      applicationCategory: 'EducationApplication',
+      operatingSystem: 'Any',
+      url: 'https://tcherayu.com',
+      offers: [
+        { '@type': 'Offer', name: 'Free', price: '0', priceCurrency: 'MYR' },
+        { '@type': 'Offer', name: 'Cerdas', price: '13.90', priceCurrency: 'MYR', billingIncrement: 'P1M' },
+        { '@type': 'Offer', name: 'Cemerlang', price: '23.90', priceCurrency: 'MYR', billingIncrement: 'P1M' },
+      ],
+      aggregateRating: { '@type': 'AggregateRating', ratingValue: '4.8', reviewCount: '120' },
+    },
+    {
+      '@type': 'FAQPage',
+      mainEntity: [
+        {
+          '@type': 'Question',
+          name: 'What subjects does Tcher Ayu support?',
+          acceptedAnswer: {
+            '@type': 'Answer',
+            text: 'Tcher Ayu supports Mathematics, Add Maths, Physics, Chemistry, Biology, History and Geography for SPM, STPM and university-level students.',
+          },
+        },
+        {
+          '@type': 'Question',
+          name: 'Is Tcher Ayu free to use?',
+          acceptedAnswer: {
+            '@type': 'Answer',
+            text: 'Yes. Tcher Ayu has a free plan with 5 question captures and 3 tutor sessions per month, no credit card required.',
+          },
+        },
+        {
+          '@type': 'Question',
+          name: 'What languages does Tcher Ayu support?',
+          acceptedAnswer: {
+            '@type': 'Answer',
+            text: 'Tcher Ayu supports English, Bahasa Melayu and Mandarin Chinese.',
+          },
+        },
+      ],
+    },
+  ],
+};
 
 const PLANS = [
   {
@@ -162,9 +219,15 @@ const FEATURES = [
 
 export default function LandingPage() {
   const user = useAuthStore((s) => s.user);
+  usePageMeta({
+    title: 'Tcher Ayu | AI Tutor for SPM, STPM & University Students',
+    description: 'Your personal AI tutor for Malaysian students. Get step-by-step explanations for SPM, STPM and university questions in English, Bahasa Melayu and Mandarin. Start free.',
+    canonical: 'https://tcherayu.com/',
+  });
 
   return (
     <>
+    <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(JSONLD) }} />
     <div className="min-h-screen bg-white text-gray-900">
 
       {/* ── Nav ─────────────────────────────────────────────────── */}

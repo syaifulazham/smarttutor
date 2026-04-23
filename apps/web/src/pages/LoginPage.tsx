@@ -2,8 +2,10 @@ import { useState, FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { login, resendVerification } from '@/services/api';
 import { useAuthStore } from '@/store/authStore';
+import { usePageMeta } from '@/hooks/usePageMeta';
 
 export default function LoginPage() {
+  usePageMeta({ title: 'Log In | Tcher Ayu', canonical: 'https://tcherayu.com/login' });
   const navigate = useNavigate();
   const setAuth = useAuthStore((s) => s.setAuth);
   const [email, setEmail] = useState('');
