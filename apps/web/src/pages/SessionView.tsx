@@ -16,6 +16,7 @@ import { useAuthStore } from '@/store/authStore';
 import { preprocessMath, stripOuterCodeFence, normalizeSchemeMarkdown } from '@/utils/preprocessMath';
 import QuestionRenderer from '@/components/question/QuestionRenderer';
 import InlineMath from '@/components/shared/InlineMath';
+import MathText from '@/components/question/MathText';
 import AvatarPicker from '@/components/shared/AvatarPicker';
 import { useAvatarStore } from '@/store/avatarStore';
 import { useLanguageStore } from '@/store/languageStore';
@@ -150,7 +151,7 @@ function QuizBlock({ data }: { data: QuizData }) {
         </svg>
         Quick Check
       </p>
-      <p className="text-sm font-medium text-gray-800 mb-3">{data.question}</p>
+      <p className="text-sm font-medium text-gray-800 mb-3"><MathText text={data.question} /></p>
       <div className="space-y-2">
         {data.options.map(({ letter, text }) => {
           const isCorrect = letter === data.answer;
@@ -171,7 +172,7 @@ function QuizBlock({ data }: { data: QuizData }) {
                 ${!answered ? 'border-gray-400 text-gray-500' : isCorrect ? 'border-green-500 bg-green-500 text-white' : isSelected ? 'border-red-400 bg-red-400 text-white' : 'border-gray-300 text-gray-400'}`}>
                 {letter}
               </span>
-              {text}
+              <MathText text={text} />
               {answered && isCorrect && (
                 <svg className="w-4 h-4 text-green-500 ml-auto flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
